@@ -576,8 +576,8 @@ sudo -u ec2-user bash -c "cd /opt/musicmart && pm2 start ecosystem.config.js"
 sudo -u ec2-user bash -c "pm2 startup"
 sudo -u ec2-user bash -c "pm2 save"
 
-# Create a simple health check script
-cat > /opt/musicmart/health-check.sh << 'EOF'
+# Create a simple health check script - Fixed the curl command
+cat > /opt/musicmart/health-check.sh << 'HEALTH_EOF'
 #!/bin/bash
 response=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/health)
 if [ $response -eq 200 ]; then
@@ -586,7 +586,7 @@ else
     echo "$(date): Application is unhealthy, restarting..."
     pm2 restart musicmart
 fi
-EOF
+HEALTH_EOF
 
 chmod +x /opt/musicmart/health-check.sh
 

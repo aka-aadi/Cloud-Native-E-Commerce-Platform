@@ -2,7 +2,7 @@
   "name": "musicmart-ecommerce",
   "version": "1.0.0",
   "private": true,
-  "description": "100% Free AWS E-commerce Platform for Music Equipment",
+  "description": "100% Free E-commerce Platform on AWS Free Tier",
   "keywords": [
     "aws",
     "free-tier",
@@ -24,7 +24,7 @@
     "url": "https://github.com/yourusername/musicmart-ecommerce.git"
   },
   "license": "MIT",
-  "author": "Your Name <your.email@example.com>",
+  "author": "Your Name",
   "scripts": {
     "build": "next build",
     "cleanup": "./scripts/cleanup-resources.sh",
@@ -32,7 +32,7 @@
     "dev": "next dev",
     "lint": "next lint",
     "monitor": "./scripts/monitor-free-usage.sh",
-    "start": "next start -p 3000",
+    "start": "next start",
     "test": "jest",
     "test:watch": "jest --watch",
     "type-check": "tsc --noEmit"

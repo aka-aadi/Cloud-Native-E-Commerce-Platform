@@ -1,267 +1,374 @@
-# 🆓 100% Free AWS E-commerce Platform Guide
+# 🎵 MusicMart - 100% Free E-commerce Platform on AWS
 
-## Overview
-This guide shows you how to deploy a complete e-commerce platform on AWS for **$0.00/month** using only free tier services.
+## 💰 Total Cost: $0.00/month
 
-## 💰 Cost Breakdown
+This guide shows you how to deploy a complete e-commerce platform on AWS using **only** free tier services. No subscriptions, no hidden costs, no paid services.
 
-### What's FREE (Always):
-- ✅ **VPC & Networking**: Always free
-- ✅ **Security Groups**: Always free  
-- ✅ **IAM Roles**: Always free
-- ✅ **Route Tables**: Always free
-
-### What's FREE (12 months):
-- ✅ **EC2 t2.micro**: 750 hours/month
-- ✅ **EBS Storage**: 30GB General Purpose SSD
-- ✅ **S3 Storage**: 5GB Standard Storage
-- ✅ **Data Transfer**: 15GB/month outbound
-
-### What's FREE (Always):
-- ✅ **S3 Requests**: 20,000 GET, 2,000 PUT/month
-- ✅ **CloudWatch**: 10 custom metrics, 10 alarms
-
-## 🏗️ Architecture
+## 🏗️ Architecture Overview
 
 \`\`\`
-Internet
-    ↓
-EC2 t2.micro (Public Subnet)
+Internet → EC2 t2.micro (Public Subnet)
 ├── Next.js Application (Port 3000)
 ├── PostgreSQL Database (Port 5432)
 ├── Nginx Reverse Proxy (Port 80)
 ├── PM2 Process Manager
-└── Health Monitoring
-    ↓
-S3 Bucket (File Storage)
+└── S3 Bucket (File Storage)
 \`\`\`
+
+## 🆓 Free Tier Resources Used
+
+| Service | Free Tier Limit | Our Usage | Cost |
+|---------|----------------|-----------|------|
+| EC2 t2.micro | 750 hours/month | 24/7 operation | $0.00 |
+| EBS Storage | 30GB (first year) | 30GB | $0.00 |
+| S3 Storage | 5GB | File uploads | $0.00 |
+| S3 Requests | 20K GET, 2K PUT | API calls | $0.00 |
+| Data Transfer | 15GB out/month | Web traffic | $0.00 |
+| VPC & Networking | Always free | Full setup | $0.00 |
+
+**Total Monthly Cost: $0.00**
 
 ## 🚀 Quick Start
 
 ### Prerequisites
-1. **AWS Account** (free to create)
+
+1. **AWS Account** (with free tier available)
 2. **AWS CLI** installed and configured
 3. **Terraform** installed
 4. **Git** installed
 
-### Step 1: Clone Repository
-\`\`\`bash
-git clone <your-repository>
-cd <your-repository>
-\`\`\`
+### Installation
 
-### Step 2: Deploy Infrastructure
 \`\`\`bash
-# Make script executable
-chmod +x scripts/deploy-100-percent-free.sh
+# 1. Clone the repository
+git clone <your-repo-url>
+cd <your-repo-name>
 
-# Deploy (takes ~10 minutes)
+# 2. Make scripts executable
+chmod +x scripts/*.sh
+
+# 3. Deploy the platform
 ./scripts/deploy-100-percent-free.sh
 \`\`\`
 
-### Step 3: Initialize Application
-1. Visit the application URL provided after deployment
-2. Click "Initialize Database" to create sample data
-3. Start using your e-commerce platform!
+### What Happens During Deployment
 
-## 📊 Monitoring Usage
+1. **AWS Credentials Check** - Verifies your AWS setup
+2. **SSH Key Generation** - Creates key pair for EC2 access
+3. **Infrastructure Creation** - Deploys VPC, EC2, S3, etc.
+4. **Application Setup** - Installs Node.js, PostgreSQL, Nginx
+5. **Health Verification** - Confirms everything is working
+
+## 🔧 Features Included
+
+### E-commerce Platform
+- ✅ **Product Catalog** with categories
+- ✅ **Admin Dashboard** for management
+- ✅ **Database Management** with PostgreSQL
+- ✅ **File Uploads** to S3
+- ✅ **Responsive Design** for mobile/desktop
+- ✅ **Health Monitoring** with auto-restart
+- ✅ **API Endpoints** for products, categories, users
+
+### Technical Features
+- ✅ **Next.js 14** with TypeScript
+- ✅ **PostgreSQL 15** database
+- ✅ **Nginx** reverse proxy
+- ✅ **PM2** process management
+- ✅ **AWS S3** file storage
+- ✅ **Health checks** every 5 minutes
+- ✅ **Auto-restart** on failure
+- ✅ **Security groups** and IAM roles
+
+## 📊 Monitoring Your Usage
 
 ### Check Free Tier Usage
 \`\`\`bash
-# Run monitoring script
-chmod +x scripts/monitor-free-usage.sh
+# Run the monitoring script
 ./scripts/monitor-free-usage.sh
 \`\`\`
 
 ### AWS Console Monitoring
-- Visit: https://console.aws.amazon.com/billing/home#/freetier
-- Set up billing alerts for $1 threshold
-- Monitor usage monthly
+- **Free Tier Dashboard**: https://console.aws.amazon.com/billing/home#/freetier
+- **Billing Dashboard**: https://console.aws.amazon.com/billing/home
+- **CloudWatch**: https://console.aws.amazon.com/cloudwatch
 
-## 🔧 Platform Features
+### Set Up Billing Alerts
+1. Go to AWS Billing Console
+2. Create a budget for $1.00
+3. Set up email notifications
+4. Monitor monthly usage
 
-### E-commerce Functionality
-- ✅ **Product Catalog**: Browse products by category
-- ✅ **Database Management**: PostgreSQL with connection pooling
-- ✅ **File Storage**: S3 integration for images
-- ✅ **Admin Interface**: Manage products and categories
-- ✅ **API Endpoints**: RESTful APIs for all operations
-- ✅ **Health Monitoring**: Automatic health checks
+## 🔒 Security Best Practices
 
-### Technical Features
-- ✅ **Next.js 14**: Modern React framework
-- ✅ **TypeScript**: Type-safe development
-- ✅ **PostgreSQL**: Reliable database
-- ✅ **Nginx**: Reverse proxy and caching
-- ✅ **PM2**: Process management and clustering
-- ✅ **Auto-restart**: Automatic recovery from failures
+### Network Security
+- **VPC** with public subnets only (no NAT Gateway cost)
+- **Security Groups** restrict access to necessary ports
+- **SSH access** with key-based authentication
+- **Database** accessible only from localhost
 
-## 🛠️ Customization
+### Application Security
+- **Environment variables** for sensitive data
+- **IAM roles** with minimal permissions
+- **HTTPS** ready (add SSL certificate)
+- **Input validation** on all API endpoints
+
+### Recommended Improvements
+\`\`\`bash
+# Add SSL certificate (free with Let's Encrypt)
+sudo certbot --nginx -d yourdomain.com
+
+# Restrict SSH access to your IP
+aws ec2 authorize-security-group-ingress \
+  --group-id sg-xxxxxxxxx \
+  --protocol tcp \
+  --port 22 \
+  --cidr YOUR_IP/32
+\`\`\`
+
+## 🛠️ Customization Guide
 
 ### Adding New Features
+
+1. **SSH into your server**:
 \`\`\`bash
-# SSH into your server
-ssh -i ~/.ssh/id_rsa ec2-user@YOUR_IP
+ssh -i ~/.ssh/id_rsa ec2-user@YOUR_EC2_IP
+\`\`\`
 
-# Navigate to application directory
+2. **Navigate to application directory**:
+\`\`\`bash
 cd /opt/musicmart
+\`\`\`
 
-# Make changes and rebuild
+3. **Make changes and rebuild**:
+\`\`\`bash
 npm run build
 pm2 restart musicmart
 \`\`\`
 
 ### Database Management
+
 \`\`\`bash
 # Connect to PostgreSQL
-sudo -u postgres psql -d musicmart_db
+sudo -u postgres psql musicmart_db
 
-# View tables
-\dt
+# Create new tables
+CREATE TABLE orders (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER,
+  total DECIMAL(10,2),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 
-# Query products
-SELECT * FROM products;
+# Exit PostgreSQL
+\q
 \`\`\`
 
-### File Uploads
-The platform includes S3 integration for file uploads:
-- Images are stored in S3
-- Public read access configured
-- IAM roles for secure access
+### Adding New API Endpoints
+
+Create new files in `app/api/` directory:
+
+\`\`\`typescript
+// app/api/orders/route.ts
+import { NextResponse } from "next/server"
+import { Pool } from 'pg'
+
+const pool = new Pool({
+  user: 'musicmart_user',
+  host: 'localhost',
+  database: 'musicmart_db',
+  password: 'musicmart_password_2024',
+  port: 5432,
+})
+
+export async function GET() {
+  // Your API logic here
+}
+\`\`\`
 
 ## 📈 Scaling Options
 
-### When You Outgrow Free Tier:
+### When You Outgrow Free Tier
 
-#### Option 1: Upgrade Instance
+1. **Upgrade EC2 Instance**:
+   - t2.micro → t2.small ($16.79/month)
+   - Add Auto Scaling Group
+
+2. **Add Load Balancer**:
+   - Application Load Balancer ($16.20/month)
+   - Multiple EC2 instances
+
+3. **Upgrade Database**:
+   - Move to RDS PostgreSQL
+   - Add read replicas
+
+4. **Add CDN**:
+   - CloudFront distribution
+   - Better global performance
+
+5. **Add Caching**:
+   - ElastiCache Redis
+   - Improve response times
+
+### Cost After Free Tier (12 months)
+
+| Service | Monthly Cost |
+|---------|-------------|
+| EC2 t2.micro | $8.50 |
+| EBS 30GB | $3.00 |
+| S3 & Transfer | $1.00 |
+| **Total** | **$12.50** |
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+**1. Application not responding**
 \`\`\`bash
-# In terraform/main.tf, change:
-instance_type = "t3.small"  # ~$15/month
-\`\`\`
-
-#### Option 2: Add Load Balancer
-\`\`\`bash
-# Add Application Load Balancer
-# Enables high availability
-# Cost: ~$18/month
-\`\`\`
-
-#### Option 3: Separate Database
-\`\`\`bash
-# Move to RDS PostgreSQL
-# Better performance and backups
-# Cost: ~$15/month for db.t3.micro
-\`\`\`
-
-## 🔒 Security Best Practices
-
-### Current Security Features
-- ✅ **Security Groups**: Restrict network access
-- ✅ **IAM Roles**: Least privilege access
-- ✅ **SSH Keys**: Secure server access
-- ✅ **VPC**: Network isolation
-- ✅ **Encrypted EBS**: Data encryption at rest
-
-### Additional Security (Optional)
-\`\`\`bash
-# Add SSL certificate (free with Let's Encrypt)
-sudo certbot --nginx -d yourdomain.com
-
-# Configure firewall
-sudo ufw enable
-sudo ufw allow 22,80,443/tcp
-\`\`\`
-
-## 🚨 Important Limits
-
-### Free Tier Limits
-| Resource | Limit | Monitoring |
-|----------|-------|------------|
-| EC2 Hours | 750/month | Auto-stop if exceeded |
-| EBS Storage | 30GB | Monitor with script |
-| S3 Storage | 5GB | Check bucket sizes |
-| Data Transfer | 15GB/month | Monitor CloudWatch |
-
-### Avoiding Overages
-1. **Set Billing Alerts**: $1, $5, $10 thresholds
-2. **Monitor Weekly**: Run monitoring script
-3. **Clean Up**: Remove unused resources
-4. **Optimize**: Compress images, cache content
-
-## 🆘 Troubleshooting
-
-### Application Not Starting
-\`\`\`bash
-# Check application logs
+# Check application status
 ssh -i ~/.ssh/id_rsa ec2-user@YOUR_IP
+pm2 status
 pm2 logs musicmart
 
-# Restart application
+# Restart if needed
 pm2 restart musicmart
 \`\`\`
 
-### Database Connection Issues
+**2. Database connection failed**
 \`\`\`bash
 # Check PostgreSQL status
 sudo systemctl status postgresql-15
-
-# Restart PostgreSQL
 sudo systemctl restart postgresql-15
 \`\`\`
 
-### High Resource Usage
+**3. Nginx not working**
 \`\`\`bash
-# Check system resources
-htop
+# Check Nginx status
+sudo systemctl status nginx
+sudo nginx -t  # Test configuration
+sudo systemctl restart nginx
+\`\`\`
 
+**4. Out of disk space**
+\`\`\`bash
 # Check disk usage
 df -h
-
 # Clean up logs
 sudo journalctl --vacuum-time=7d
 \`\`\`
 
+### Getting Help
+
+1. **Check logs**:
+\`\`\`bash
+# Application logs
+pm2 logs musicmart
+
+# System logs
+sudo journalctl -u nginx
+sudo journalctl -u postgresql-15
+\`\`\`
+
+2. **Health check**:
+\`\`\`bash
+curl http://YOUR_IP/api/health
+\`\`\`
+
+3. **Monitor resources**:
+\`\`\`bash
+./scripts/monitor-free-usage.sh
+\`\`\`
+
+## 🎯 Use Cases
+
+### Perfect For:
+- ✅ **Startups** with zero budget
+- ✅ **Learning** AWS and e-commerce development
+- ✅ **Prototyping** new business ideas
+- ✅ **Portfolio projects** for developers
+- ✅ **Small businesses** getting started online
+- ✅ **Development environments**
+- ✅ **Educational projects**
+
+### Not Suitable For:
+- ❌ High-traffic production sites (>15GB transfer/month)
+- ❌ Large file storage needs (>5GB)
+- ❌ Mission-critical applications requiring 99.99% uptime
+- ❌ Applications requiring multiple regions
+
+## 🔄 Maintenance
+
+### Regular Tasks
+
+**Weekly**:
+- Check application health
+- Monitor free tier usage
+- Review logs for errors
+
+**Monthly**:
+- Update system packages
+- Check security updates
+- Review AWS billing
+
+**Quarterly**:
+- Backup database
+- Review and optimize performance
+- Update application dependencies
+
+### Backup Strategy
+
+\`\`\`bash
+# Database backup
+pg_dump -h localhost -U musicmart_user musicmart_db > backup.sql
+
+# Upload to S3
+aws s3 cp backup.sql s3://your-bucket/backups/
+
+# Restore from backup
+psql -h localhost -U musicmart_user musicmart_db < backup.sql
+\`\`\`
+
+## 🎉 Success Stories
+
+This architecture is perfect for:
+- **Learning**: Understand AWS services without cost
+- **Prototyping**: Test business ideas for free
+- **Development**: Create staging environments
+- **Small Scale**: Handle moderate traffic loads
+- **Education**: Teach cloud computing concepts
+
 ## 📞 Support
 
-### Getting Help
-1. **Check Logs**: Application and system logs
-2. **AWS Documentation**: Free tier limits and usage
-3. **Community Forums**: AWS and Next.js communities
-4. **Monitoring**: Use provided monitoring scripts
+### Community Resources
+- **AWS Free Tier FAQ**: https://aws.amazon.com/free/
+- **Next.js Documentation**: https://nextjs.org/docs
+- **PostgreSQL Documentation**: https://www.postgresql.org/docs/
 
-### Common Issues
-- **Out of Memory**: Restart PM2 processes
-- **Disk Full**: Clean up logs and temporary files
-- **Network Issues**: Check security groups
-- **Database Errors**: Restart PostgreSQL service
+### Monitoring Commands
+\`\`\`bash
+# Check all services
+./scripts/monitor-free-usage.sh
 
-## 🎯 Success Metrics
+# Application health
+curl http://YOUR_IP/api/health
 
-### What You Get
-- ✅ **Complete E-commerce Platform**
-- ✅ **Production-Ready Architecture**
-- ✅ **Scalable Foundation**
-- ✅ **Zero Monthly Costs** (first 12 months)
-- ✅ **Learning Experience**
-- ✅ **Portfolio Project**
-
-### Perfect For
-- 🎓 **Students** learning cloud development
-- 🚀 **Startups** with zero budget
-- 💡 **Prototyping** new business ideas
-- 📚 **Learning** AWS and e-commerce
-- 🎨 **Portfolio** projects
-- 🔬 **Experimentation** with new technologies
+# Server resources
+ssh -i ~/.ssh/id_rsa ec2-user@YOUR_IP 'top -n 1'
+\`\`\`
 
 ---
 
-**🎉 Congratulations!** You now have a complete, production-ready e-commerce platform running on AWS for **$0.00/month**!
+**🎵 Enjoy your completely FREE e-commerce platform on AWS!**
+
+*Remember: This setup costs $0.00/month within AWS Free Tier limits. Monitor your usage to stay within these limits.*
 \`\`\`
 
 ```shellscript file="scripts/cleanup-resources.sh"
 #!/bin/bash
 
-# Cleanup AWS Resources Script
+# Cleanup script for MusicMart AWS resources
+# Use this to destroy all resources and avoid any charges
+
 set -e
 
 # Colors for output
@@ -272,59 +379,96 @@ BLUE='\033[0;34m'
 PURPLE='\033[0;35m'
 NC='\033[0m' # No Color
 
-echo -e "${RED}🗑️  AWS Resources Cleanup Script${NC}"
-echo -e "${YELLOW}⚠️  This will destroy ALL MusicMart resources${NC}"
+echo -e "${RED}🗑️  MusicMart Resource Cleanup${NC}"
+echo -e "${YELLOW}⚠️  This will DESTROY all AWS resources created for MusicMart${NC}"
 echo ""
 
 # Check if terraform directory exists
 if [ ! -d "terraform" ]; then
     echo -e "${RED}❌ Terraform directory not found${NC}"
-    echo "Please run this script from the project root directory"
+    echo -e "${YELLOW}Make sure you're in the project root directory${NC}"
     exit 1
 fi
 
-cd terraform
-
 # Check if terraform state exists
-if [ ! -f "terraform.tfstate" ]; then
-    echo -e "${YELLOW}⚠️  No Terraform state found${NC}"
-    echo "Resources may have been already destroyed or deployed differently"
+if [ ! -f "terraform/terraform.tfstate" ]; then
+    echo -e "${YELLOW}⚠️  No Terraform state file found${NC}"
+    echo -e "${YELLOW}Resources may have already been destroyed or never created${NC}"
     exit 0
 fi
 
 # Show what will be destroyed
-echo -e "${BLUE}📋 Resources to be destroyed:${NC}"
-terraform show -json | jq -r '.values.root_module.resources[].address' 2>/dev/null || echo "Unable to parse state file"
+echo -e "${BLUE}📋 Resources that will be destroyed:${NC}"
+cd terraform
+terraform show -no-color | grep -E "resource|data" | head -20
 echo ""
 
 # Confirm destruction
 echo -e "${RED}⚠️  WARNING: This action cannot be undone!${NC}"
-echo -e "${RED}All data will be permanently lost!${NC}"
+echo -e "${RED}All data, including your database, will be permanently lost.${NC}"
 echo ""
-read -p "Are you sure you want to destroy all resources? (type 'yes' to confirm): " -r
+read -p "Are you absolutely sure you want to destroy all resources? (type 'yes' to confirm): " -r
+
 if [[ ! $REPLY == "yes" ]]; then
     echo -e "${YELLOW}⏸️  Cleanup cancelled${NC}"
     exit 0
 fi
 
+echo ""
+echo -e "${BLUE}🗑️  Starting resource destruction...${NC}"
+
 # Destroy resources
-echo -e "${BLUE}🗑️  Destroying infrastructure...${NC}"
 terraform destroy -auto-approve
 
-# Clean up local files
-echo -e "${BLUE}🧹 Cleaning up local files...${NC}"
-rm -f terraform.tfstate*
-rm -f tfplan
-rm -rf .terraform/
-rm -f .terraform.lock.hcl
+if [ $? -eq 0 ]; then
+    echo ""
+    echo -e "${GREEN}✅ All resources destroyed successfully${NC}"
+    echo ""
+    echo -e "${BLUE}📋 Cleanup Summary:${NC}"
+    echo -e "${GREEN}├── EC2 instance: Terminated${NC}"
+    echo -e "${GREEN}├── S3 bucket: Deleted${NC}"
+    echo -e "${GREEN}├── VPC & networking: Removed${NC}"
+    echo -e "${GREEN}├── Security groups: Deleted${NC}"
+    echo -e "${GREEN}├── IAM roles: Removed${NC}"
+    echo -e "${GREEN}└── SSH key pair: Deleted${NC}"
+    echo ""
+    echo -e "${GREEN}💰 Your AWS bill will return to $0.00/month${NC}"
+    echo ""
+    
+    # Clean up local files
+    echo -e "${BLUE}🧹 Cleaning up local files...${NC}"
+    rm -f terraform.tfstate*
+    rm -f tfplan
+    rm -f .terraform.lock.hcl
+    rm -rf .terraform/
+    
+    echo -e "${GREEN}✅ Local cleanup complete${NC}"
+    
+else
+    echo ""
+    echo -e "${RED}❌ Error occurred during resource destruction${NC}"
+    echo -e "${YELLOW}Some resources may still exist. Check AWS Console.${NC}"
+    echo ""
+    echo -e "${BLUE}🔧 Manual cleanup may be required for:${NC}"
+    echo -e "${YELLOW}├── EC2 instances${NC}"
+    echo -e "${YELLOW}├── S3 buckets (if not empty)${NC}"
+    echo -e "${YELLOW}├── VPC components${NC}"
+    echo -e "${YELLOW}└── IAM roles${NC}"
+    echo ""
+    echo -e "${BLUE}Visit AWS Console to manually delete remaining resources:${NC}"
+    echo -e "${BLUE}https://console.aws.amazon.com/ec2/v2/home${NC}"
+    exit 1
+fi
 
-# Clean up deployment info
 cd ..
-rm -f deployment-info.txt
+
+# Remove deployment info file
+if [ -f "deployment-info.txt" ]; then
+    rm -f deployment-info.txt
+    echo -e "${GREEN}✅ Deployment info file removed${NC}"
+fi
 
 echo ""
-echo -e "${GREEN}✅ Cleanup completed successfully!${NC}"
-echo -e "${GREEN}All AWS resources have been destroyed${NC}"
-echo -e "${GREEN}No charges will be incurred${NC}"
-echo ""
-echo -e "${BLUE}💡 To redeploy, run: ./scripts/deploy-100-percent-free.sh${NC}"
+echo -e "${PURPLE}🎉 MusicMart cleanup completed!${NC}"
+echo -e "${GREEN}All AWS resources have been destroyed.${NC}"
+echo -e "${BLUE}You can now redeploy anytime with: ./scripts/deploy-100-percent-free.sh${NC}"
