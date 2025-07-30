@@ -688,58 +688,37 @@ nginx -t
 systemctl enable nginx
 systemctl start nginx
 
-# Create health check script - using double percent to escape for Terraform
-cat > /usr/local/bin/health-check.sh << 'HEALTH_EOF'
+# Create health check script
+cat > /usr/local/bin/health-check.sh << 'HEALTH_SCRIPT_EOF'
 #!/bin/bash
 
-# Health check script for Legato
 LOG_FILE="/var/log/health-check.log"
 
-check_service() {
-    local service=$1
-    local url=$2
-    
-    echo "$(date): Checking $service..." >> $LOG_FILE
-    
-    if [ -n "$url" ]; then
-        response=$(curl -s -o /dev/null -w "%{http_code}" "$url" --max-time 10)
-        if [ "$response" = "200" ]; then
-            echo "$(date): $service is healthy (HTTP $response)" >> $LOG_FILE
-            return 0
-        else
-            echo "$(date): $service is unhealthy (HTTP $response)" >> $LOG_FILE
-            return 1
-        fi
-    else
-        if systemctl is-active --quiet "$service"; then
-            echo "$(date): $service is running" >> $LOG_FILE
-            return 0
-        else
-            echo "$(date): $service is not running" >> $LOG_FILE
-            return 1
-        fi
-    fi
-}
+echo "$(date): Starting health check..." >> $LOG_FILE
 
-# Check services
-check_service "nginx"
-check_service "postgresql"
-check_service "application" "http://localhost:3000/api/health"
-
-# Check disk space
-disk_usage=$(df / | awk 'NR==2 {print $5}' | sed 's/%//')
-if [ "$disk_usage" -gt 80 ]; then
-    echo "$(date): WARNING - Disk usage is ${disk_usage}%" >> $LOG_FILE
+# Check nginx
+if systemctl is-active --quiet nginx; then
+    echo "$(date): nginx is running" >> $LOG_FILE
+else
+    echo "$(date): nginx is not running" >> $LOG_FILE
 fi
 
-# Check memory usage
-mem_usage=$(free | awk 'NR==2{printf "%.0f", $3*100/$2}')
-if [ "$mem_usage" -gt 80 ]; then
-    echo "$(date): WARNING - Memory usage is ${mem_usage}%" >> $LOG_FILE
+# Check postgresql
+if systemctl is-active --quiet postgresql; then
+    echo "$(date): postgresql is running" >> $LOG_FILE
+else
+    echo "$(date): postgresql is not running" >> $LOG_FILE
+fi
+
+# Check application - simple approach without curl format strings
+if curl -s http://localhost:3000/api/health > /dev/null; then
+    echo "$(date): application is healthy" >> $LOG_FILE
+else
+    echo "$(date): application is unhealthy" >> $LOG_FILE
 fi
 
 echo "$(date): Health check completed" >> $LOG_FILE
-HEALTH_EOF
+HEALTH_SCRIPT_EOF
 
 chmod +x /usr/local/bin/health-check.sh
 
