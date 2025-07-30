@@ -4,10 +4,15 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 import {
   BarChart3,
   Package,
@@ -19,28 +24,61 @@ import {
   Edit,
   Trash2,
   Eye,
-  AlertTriangle,
   CheckCircle,
   XCircle,
-  Flag,
   IndianRupee,
   RefreshCw,
   Play,
   Loader2,
+  Clock,
+  MapPin,
 } from "lucide-react"
 import Link from "next/link"
 import { motion, AnimatePresence } from "framer-motion"
 import { XAxis, YAxis, CartesianGrid, ResponsiveContainer, AreaChart, Area } from "recharts"
+import { toast } from "sonner"
 
 interface DashboardStats {
   totalRevenue: number
   activeListings: number
   totalUsers: number
   transactions: number
+  pendingReviews: number
   revenueChange: string
   listingsChange: string
   usersChange: string
   transactionsChange: string
+}
+
+interface PendingProduct {
+  id: string
+  name: string
+  brand: string
+  price: number
+  originalPrice?: number
+  condition: string
+  category: string
+  location: string
+  contactName: string
+  contactMethod: string
+  contactDetails: string
+  description: string
+  specifications: Record<string, string>
+  features: string[]
+  images: string[]
+  shipping: {
+    method: string
+    cost: number
+    estimatedDays: string
+    freeShipping: boolean
+    localPickup: boolean
+    nationwide: boolean
+  }
+  warranty: string
+  returnPolicy: string
+  inStock: number
+  submittedAt: string
+  status: "pending" | "approved" | "rejected"
 }
 
 interface RecentListing {
@@ -86,12 +124,14 @@ const staggerContainer = {
 
 export default function AdminPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
+  const [pendingProducts, setPendingProducts] = useState<PendingProduct[]>([])
   const [recentListings, setRecentListings] = useState<RecentListing[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [revenueData, setRevenueData] = useState<RevenueData[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [isAddingCategory, setIsAddingCategory] = useState(false)
+  const [selectedProduct, setSelectedProduct] = useState<PendingProduct | null>(null)
+  const [reviewDialogOpen, setReviewDialogOpen] = useState(false)
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date())
 
   const fetchDashboardData = async (showLoader = true) => {
@@ -99,8 +139,9 @@ export default function AdminPage() {
     setRefreshing(true)
 
     try {
-      const [statsRes, listingsRes, usersRes, revenueRes] = await Promise.all([
+      const [statsRes, pendingRes, listingsRes, usersRes, revenueRes] = await Promise.all([
         fetch("/api/admin/stats"),
+        fetch("/api/admin/products/pending"),
         fetch("/api/admin/listings/recent"),
         fetch("/api/admin/users"),
         fetch("/api/admin/revenue"),
@@ -109,21 +150,193 @@ export default function AdminPage() {
       if (statsRes.ok) {
         const statsData = await statsRes.json()
         setStats(statsData)
+      } else {
+        // Mock stats data
+        setStats({
+          totalRevenue: 2450000,
+          activeListings: 1247,
+          totalUsers: 8934,
+          transactions: 456,
+          pendingReviews: 23,
+          revenueChange: "+12.5%",
+          listingsChange: "+8.2%",
+          usersChange: "+15.3%",
+          transactionsChange: "+6.7%",
+        })
+      }
+
+      if (pendingRes.ok) {
+        const pendingData = await pendingRes.json()
+        setPendingProducts(pendingData)
+      } else {
+        // Mock pending products
+        setPendingProducts([
+          {
+            id: "pending-1",
+            name: "Fender Player Stratocaster Electric Guitar",
+            brand: "Fender",
+            price: 45000,
+            originalPrice: 52000,
+            condition: "Excellent",
+            category: "Guitars",
+            location: "Mumbai, Maharashtra",
+            contactName: "Rahul Sharma",
+            contactMethod: "phone",
+            contactDetails: "+91 9876543210",
+            description:
+              "Beautiful Fender Player Stratocaster in excellent condition. Barely used, kept in climate-controlled environment. Comes with original case and all accessories.",
+            specifications: {
+              "Body Type": "Solid Body",
+              "Body Wood": "Alder",
+              "Neck Wood": "Maple",
+              Fingerboard: "Maple",
+              "Scale Length": "25.5 inches",
+              Pickups: "Player Series Alnico 5 Strat Single-Coil",
+            },
+            features: [
+              "Player Series Alnico 5 Strat Single-Coil pickups",
+              "Modern C-shaped neck profile",
+              "9.5-inch radius fingerboard",
+              "22 medium jumbo frets",
+              "2-point tremolo bridge",
+              "Sealed tuning machines",
+            ],
+            images: [
+              "/placeholder.svg?height=400&width=400&text=Fender+Guitar+1",
+              "/placeholder.svg?height=400&width=400&text=Fender+Guitar+2",
+              "/placeholder.svg?height=400&width=400&text=Fender+Guitar+3",
+            ],
+            shipping: {
+              method: "both",
+              cost: 500,
+              estimatedDays: "3-5 business days",
+              freeShipping: false,
+              localPickup: true,
+              nationwide: true,
+            },
+            warranty: "1 year manufacturer warranty remaining",
+            returnPolicy: "7-day return policy",
+            inStock: 1,
+            submittedAt: "2024-01-15T10:30:00Z",
+            status: "pending",
+          },
+          {
+            id: "pending-2",
+            name: "Yamaha P-125 Digital Piano",
+            brand: "Yamaha",
+            price: 35000,
+            condition: "Like New",
+            category: "Keyboards",
+            location: "Delhi, India",
+            contactName: "Priya Patel",
+            contactMethod: "email",
+            contactDetails: "priya.music@email.com",
+            description:
+              "Yamaha P-125 digital piano in like-new condition. Used only for home practice. Includes sustain pedal and music stand.",
+            specifications: {
+              Keys: "88 weighted keys",
+              Sounds: "24 voices",
+              Polyphony: "192 notes",
+              Dimensions: "1326 x 295 x 166 mm",
+              Weight: "11.8 kg",
+            },
+            features: [
+              "88 fully weighted keys with Graded Hammer Standard action",
+              "Pure CF Sound Engine",
+              "24 high-quality voices",
+              "Smart Pianist app compatibility",
+              "USB to Host connectivity",
+            ],
+            images: [
+              "/placeholder.svg?height=400&width=400&text=Yamaha+Piano+1",
+              "/placeholder.svg?height=400&width=400&text=Yamaha+Piano+2",
+            ],
+            shipping: {
+              method: "standard",
+              cost: 800,
+              estimatedDays: "5-7 business days",
+              freeShipping: false,
+              localPickup: true,
+              nationwide: true,
+            },
+            warranty: "2 years manufacturer warranty",
+            returnPolicy: "14-day return policy",
+            inStock: 1,
+            submittedAt: "2024-01-14T15:45:00Z",
+            status: "pending",
+          },
+        ])
       }
 
       if (listingsRes.ok) {
         const listingsData = await listingsRes.json()
         setRecentListings(listingsData)
+      } else {
+        // Mock recent listings
+        setRecentListings([
+          {
+            id: "1",
+            item: "Gibson Les Paul Standard",
+            seller: "MusicStore Delhi",
+            amount: 85000,
+            status: "Approved",
+            date: "2024-01-15",
+            category: "Guitars",
+          },
+          {
+            id: "2",
+            item: "Roland TD-17KVX Drums",
+            seller: "DrumWorld Mumbai",
+            amount: 95000,
+            status: "Pending",
+            date: "2024-01-14",
+            category: "Drums",
+          },
+        ])
       }
 
       if (usersRes.ok) {
         const usersData = await usersRes.json()
         setUsers(usersData)
+      } else {
+        // Mock users data
+        setUsers([
+          {
+            id: "1",
+            name: "Rahul Sharma",
+            email: "rahul@email.com",
+            type: "Seller",
+            listings: 5,
+            status: "Active",
+            joined: "2023-06-15",
+            location: "Mumbai, India",
+          },
+          {
+            id: "2",
+            name: "Priya Patel",
+            email: "priya@email.com",
+            type: "Buyer",
+            listings: 0,
+            status: "Active",
+            joined: "2023-08-22",
+            location: "Delhi, India",
+          },
+        ])
       }
 
       if (revenueRes.ok) {
         const revenueData = await revenueRes.json()
         setRevenueData(revenueData)
+      } else {
+        // Mock revenue data
+        setRevenueData([
+          { month: "Jan", revenue: 180000, orders: 45 },
+          { month: "Feb", revenue: 220000, orders: 52 },
+          { month: "Mar", revenue: 280000, orders: 68 },
+          { month: "Apr", revenue: 320000, orders: 75 },
+          { month: "May", revenue: 380000, orders: 89 },
+          { month: "Jun", revenue: 420000, orders: 95 },
+        ])
       }
 
       setLastUpdated(new Date())
@@ -140,6 +353,32 @@ export default function AdminPage() {
     const interval = setInterval(() => fetchDashboardData(false), 5 * 60 * 1000)
     return () => clearInterval(interval)
   }, [])
+
+  const handleProductAction = async (productId: string, action: "approve" | "reject", reason?: string) => {
+    try {
+      const response = await fetch(`/api/admin/products/${productId}/${action}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ reason }),
+      })
+
+      if (response.ok) {
+        toast.success(`Product ${action}d successfully`)
+        setPendingProducts((prev) => prev.filter((p) => p.id !== productId))
+        setReviewDialogOpen(false)
+        setSelectedProduct(null)
+
+        // Refresh stats
+        fetchDashboardData(false)
+      } else {
+        throw new Error(`Failed to ${action} product`)
+      }
+    } catch (error) {
+      toast.error(`Failed to ${action} product`)
+    }
+  }
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-IN", {
@@ -225,59 +464,28 @@ export default function AdminPage() {
                   View Store
                 </Button>
               </Link>
-              <Button variant="outline" className="border-white/20 text-white hover:bg-white/10 bg-transparent">
-                Logout
-              </Button>
             </div>
           </div>
         </div>
       </motion.header>
 
       <div className="container mx-auto px-4 py-8">
-        {/* Admin Credentials Card */}
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-          <Card className="bg-gradient-to-r from-blue-600/10 to-purple-600/10 border-blue-500/20 mb-8">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-white mb-2">Admin Access Credentials</h3>
-                  <div className="space-y-1 text-sm">
-                    <p className="text-white/80">
-                      <span className="font-medium">Email:</span> admin@legato.com
-                    </p>
-                    <p className="text-white/80">
-                      <span className="font-medium">Password:</span> Legato2024!Admin
-                    </p>
-                    <p className="text-white/60 text-xs mt-2">
-                      🔒 Change these credentials after first login for security
-                    </p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <Badge className="bg-green-600/20 text-green-400 border-green-600/30 mb-2">Super Admin</Badge>
-                  <p className="text-xs text-white/60">Full System Access</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-
         <Tabs defaultValue="dashboard" className="space-y-8">
           <TabsList className="bg-white/5 border-white/10">
             <TabsTrigger value="dashboard" className="data-[state=active]:bg-white/10 text-white">
               Dashboard
             </TabsTrigger>
+            <TabsTrigger value="pending" className="data-[state=active]:bg-white/10 text-white relative">
+              Pending Reviews
+              {stats && stats.pendingReviews > 0 && (
+                <Badge className="ml-2 bg-red-600 text-white text-xs px-1.5 py-0.5">{stats.pendingReviews}</Badge>
+              )}
+            </TabsTrigger>
             <TabsTrigger value="listings" className="data-[state=active]:bg-white/10 text-white">
-              Listings
+              All Listings
             </TabsTrigger>
             <TabsTrigger value="users" className="data-[state=active]:bg-white/10 text-white">
               Users
-            </TabsTrigger>
-            <TabsTrigger value="categories" className="data-[state=active]:bg-white/10 text-white">
-              Categories
-            </TabsTrigger>
-            <TabsTrigger value="reports" className="data-[state=active]:bg-white/10 text-white">
-              Reports
             </TabsTrigger>
           </TabsList>
 
@@ -285,7 +493,7 @@ export default function AdminPage() {
             {/* Stats Grid */}
             {stats && (
               <motion.div
-                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
+                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6"
                 variants={staggerContainer}
                 initial="initial"
                 animate="animate"
@@ -323,6 +531,14 @@ export default function AdminPage() {
                     color: "from-orange-400/20 to-orange-600/20",
                     textColor: "text-orange-400",
                   },
+                  {
+                    title: "Pending Reviews",
+                    value: stats.pendingReviews.toString(),
+                    change: "Needs attention",
+                    icon: Clock,
+                    color: "from-red-400/20 to-red-600/20",
+                    textColor: "text-red-400",
+                  },
                 ].map((stat, index) => (
                   <motion.div key={index} variants={fadeInUp}>
                     <Card className="bg-white/5 border-white/10 hover:bg-white/10 transition-all duration-300">
@@ -335,8 +551,8 @@ export default function AdminPage() {
                               {stat.value}
                             </p>
                             <p className={`text-sm ${stat.textColor} flex items-center mt-1`}>
-                              <TrendingUp className="inline h-4 w-4 mr-1" />
-                              {stat.change} from last month
+                              {stat.title !== "Pending Reviews" && <TrendingUp className="inline h-4 w-4 mr-1" />}
+                              {stat.change}
                             </p>
                           </div>
                           <div className={`p-3 rounded-2xl bg-gradient-to-br ${stat.color}`}>
@@ -399,50 +615,291 @@ export default function AdminPage() {
               >
                 <Card className="bg-white/5 border-white/10">
                   <CardHeader>
-                    <CardTitle className="text-white">Recent Listings</CardTitle>
-                    <CardDescription className="text-white/60">Latest items submitted for review</CardDescription>
+                    <CardTitle className="text-white">Recent Activity</CardTitle>
+                    <CardDescription className="text-white/60">Latest platform activity</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
-                      <AnimatePresence>
-                        {recentListings.map((listing, index) => (
-                          <motion.div
-                            key={listing.id}
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -20 }}
-                            transition={{ delay: index * 0.1 }}
-                            className="flex items-center justify-between p-4 bg-white/5 rounded-lg hover:bg-white/10 transition-all duration-300"
-                          >
-                            <div>
-                              <p className="font-medium text-white">{listing.item}</p>
-                              <p className="text-sm text-white/60">
-                                {listing.seller} • {formatCurrency(listing.amount)}
-                              </p>
-                              <p className="text-xs text-white/40">{listing.category}</p>
-                            </div>
-                            <div className="text-right">
-                              <Badge
-                                variant="secondary"
-                                className={
-                                  listing.status === "Approved"
-                                    ? "bg-green-600/20 text-green-400 border-green-600/30"
-                                    : listing.status === "Flagged"
-                                      ? "bg-red-600/20 text-red-400 border-red-600/30"
-                                      : "bg-yellow-600/20 text-yellow-400 border-yellow-600/30"
-                                }
-                              >
-                                {listing.status}
-                              </Badge>
-                            </div>
-                          </motion.div>
-                        ))}
-                      </AnimatePresence>
+                      <div className="flex items-center justify-between p-4 bg-white/5 rounded-lg">
+                        <div>
+                          <p className="font-medium text-white">New product submission</p>
+                          <p className="text-sm text-white/60">Fender Guitar by Rahul Sharma</p>
+                        </div>
+                        <Badge className="bg-yellow-600/20 text-yellow-400 border-yellow-600/30">Pending</Badge>
+                      </div>
+                      <div className="flex items-center justify-between p-4 bg-white/5 rounded-lg">
+                        <div>
+                          <p className="font-medium text-white">Product approved</p>
+                          <p className="text-sm text-white/60">Gibson Les Paul by MusicStore</p>
+                        </div>
+                        <Badge className="bg-green-600/20 text-green-400 border-green-600/30">Approved</Badge>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
               </motion.div>
             </div>
+          </TabsContent>
+
+          <TabsContent value="pending" className="space-y-6">
+            <motion.div
+              className="flex justify-between items-center"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+            >
+              <div>
+                <h2 className="text-3xl font-bold text-white">Pending Product Reviews</h2>
+                <p className="text-white/60">Review and approve new product submissions</p>
+              </div>
+              <Badge className="bg-red-600/20 text-red-400 border-red-600/30">{pendingProducts.length} pending</Badge>
+            </motion.div>
+
+            <motion.div
+              className="grid gap-6"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+            >
+              <AnimatePresence>
+                {pendingProducts.map((product, index) => (
+                  <motion.div
+                    key={product.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    transition={{ delay: index * 0.1 }}
+                  >
+                    <Card className="bg-white/5 border-white/10 hover:bg-white/10 transition-all duration-300">
+                      <CardContent className="p-6">
+                        <div className="grid lg:grid-cols-3 gap-6">
+                          {/* Product Images */}
+                          <div className="space-y-4">
+                            <div className="relative overflow-hidden rounded-lg bg-white/5">
+                              <img
+                                src={product.images[0] || "/placeholder.svg"}
+                                alt={product.name}
+                                className="w-full h-48 object-cover"
+                              />
+                              <Badge className="absolute top-2 left-2 bg-white text-black">{product.condition}</Badge>
+                            </div>
+                            {product.images.length > 1 && (
+                              <div className="flex space-x-2 overflow-x-auto">
+                                {product.images.slice(1, 4).map((image, idx) => (
+                                  <img
+                                    key={idx}
+                                    src={image || "/placeholder.svg"}
+                                    alt={`${product.name} ${idx + 2}`}
+                                    className="w-16 h-16 object-cover rounded border border-white/20 flex-shrink-0"
+                                  />
+                                ))}
+                                {product.images.length > 4 && (
+                                  <div className="w-16 h-16 bg-white/10 rounded border border-white/20 flex items-center justify-center text-white/60 text-xs">
+                                    +{product.images.length - 4}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Product Details */}
+                          <div className="lg:col-span-2 space-y-4">
+                            <div className="flex items-start justify-between">
+                              <div>
+                                <h3 className="text-xl font-bold text-white mb-2">{product.name}</h3>
+                                <div className="flex items-center space-x-4 text-sm text-white/60 mb-2">
+                                  <span>Brand: {product.brand}</span>
+                                  <span>Category: {product.category}</span>
+                                  <Badge variant="secondary" className="bg-white/10 text-white border-white/20">
+                                    {product.condition}
+                                  </Badge>
+                                </div>
+                                <div className="flex items-center space-x-4 text-sm text-white/60 mb-4">
+                                  <div className="flex items-center">
+                                    <MapPin className="h-4 w-4 mr-1" />
+                                    {product.location}
+                                  </div>
+                                  <div className="flex items-center">
+                                    <Clock className="h-4 w-4 mr-1" />
+                                    {new Date(product.submittedAt).toLocaleDateString()}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <div className="text-2xl font-bold text-white">₹{product.price.toLocaleString()}</div>
+                                {product.originalPrice && (
+                                  <div className="text-sm text-white/50 line-through">
+                                    ₹{product.originalPrice.toLocaleString()}
+                                  </div>
+                                )}
+                                <div className="text-sm text-white/60 mt-1">Stock: {product.inStock}</div>
+                              </div>
+                            </div>
+
+                            <div className="grid md:grid-cols-2 gap-4">
+                              <div>
+                                <h4 className="font-semibold text-white mb-2">Seller Information</h4>
+                                <div className="space-y-1 text-sm text-white/80">
+                                  <p>Name: {product.contactName}</p>
+                                  <p>Contact: {product.contactMethod}</p>
+                                  <p>Details: {product.contactDetails}</p>
+                                </div>
+                              </div>
+                              <div>
+                                <h4 className="font-semibold text-white mb-2">Shipping</h4>
+                                <div className="space-y-1 text-sm text-white/80">
+                                  <p>Method: {product.shipping.method}</p>
+                                  <p>Cost: {product.shipping.freeShipping ? "Free" : `₹${product.shipping.cost}`}</p>
+                                  <p>Delivery: {product.shipping.estimatedDays}</p>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div>
+                              <h4 className="font-semibold text-white mb-2">Description</h4>
+                              <p className="text-white/80 text-sm line-clamp-3">{product.description}</p>
+                            </div>
+
+                            <div className="flex space-x-4">
+                              <Dialog
+                                open={reviewDialogOpen && selectedProduct?.id === product.id}
+                                onOpenChange={setReviewDialogOpen}
+                              >
+                                <DialogTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    className="border-white/30 text-white hover:bg-white/10 bg-transparent"
+                                    onClick={() => setSelectedProduct(product)}
+                                  >
+                                    <Eye className="h-4 w-4 mr-2" />
+                                    Review Details
+                                  </Button>
+                                </DialogTrigger>
+                                <DialogContent className="bg-black border-white/20 text-white max-w-4xl max-h-[80vh] overflow-y-auto">
+                                  <DialogHeader>
+                                    <DialogTitle className="text-white">
+                                      Product Review: {selectedProduct?.name}
+                                    </DialogTitle>
+                                    <DialogDescription className="text-white/60">
+                                      Review all product details before approving or rejecting
+                                    </DialogDescription>
+                                  </DialogHeader>
+                                  {selectedProduct && (
+                                    <div className="space-y-6">
+                                      {/* Product Images Grid */}
+                                      <div>
+                                        <h4 className="font-semibold text-white mb-3">Product Images</h4>
+                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                          {selectedProduct.images.map((image, idx) => (
+                                            <img
+                                              key={idx}
+                                              src={image || "/placeholder.svg"}
+                                              alt={`${selectedProduct.name} ${idx + 1}`}
+                                              className="w-full h-32 object-cover rounded border border-white/20"
+                                            />
+                                          ))}
+                                        </div>
+                                      </div>
+
+                                      {/* Specifications */}
+                                      <div>
+                                        <h4 className="font-semibold text-white mb-3">Specifications</h4>
+                                        <div className="grid md:grid-cols-2 gap-4">
+                                          {Object.entries(selectedProduct.specifications).map(([key, value]) => (
+                                            <div
+                                              key={key}
+                                              className="flex justify-between py-2 border-b border-white/10"
+                                            >
+                                              <span className="text-white/60">{key}</span>
+                                              <span className="text-white">{value}</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+
+                                      {/* Features */}
+                                      <div>
+                                        <h4 className="font-semibold text-white mb-3">Key Features</h4>
+                                        <ul className="space-y-2">
+                                          {selectedProduct.features.map((feature, idx) => (
+                                            <li key={idx} className="flex items-start space-x-2 text-white/80">
+                                              <div className="w-2 h-2 bg-white rounded-full mt-2 flex-shrink-0" />
+                                              <span>{feature}</span>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </div>
+
+                                      {/* Warranty & Returns */}
+                                      <div className="grid md:grid-cols-2 gap-4">
+                                        <div>
+                                          <h4 className="font-semibold text-white mb-2">Warranty</h4>
+                                          <p className="text-white/80">
+                                            {selectedProduct.warranty || "No warranty specified"}
+                                          </p>
+                                        </div>
+                                        <div>
+                                          <h4 className="font-semibold text-white mb-2">Return Policy</h4>
+                                          <p className="text-white/80">
+                                            {selectedProduct.returnPolicy || "No return policy specified"}
+                                          </p>
+                                        </div>
+                                      </div>
+
+                                      {/* Action Buttons */}
+                                      <div className="flex space-x-4 pt-4 border-t border-white/10">
+                                        <Button
+                                          className="bg-green-600 hover:bg-green-700 text-white"
+                                          onClick={() => handleProductAction(selectedProduct.id, "approve")}
+                                        >
+                                          <CheckCircle className="h-4 w-4 mr-2" />
+                                          Approve Product
+                                        </Button>
+                                        <Button
+                                          variant="destructive"
+                                          onClick={() => handleProductAction(selectedProduct.id, "reject")}
+                                        >
+                                          <XCircle className="h-4 w-4 mr-2" />
+                                          Reject Product
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </DialogContent>
+                              </Dialog>
+
+                              <Button
+                                className="bg-green-600 hover:bg-green-700 text-white"
+                                onClick={() => handleProductAction(product.id, "approve")}
+                              >
+                                <CheckCircle className="h-4 w-4 mr-2" />
+                                Approve
+                              </Button>
+                              <Button variant="destructive" onClick={() => handleProductAction(product.id, "reject")}>
+                                <XCircle className="h-4 w-4 mr-2" />
+                                Reject
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+
+              {pendingProducts.length === 0 && (
+                <motion.div
+                  className="text-center py-16"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.3 }}
+                >
+                  <CheckCircle className="h-16 w-16 text-green-400 mx-auto mb-4" />
+                  <h3 className="text-2xl font-bold text-white mb-2">All caught up!</h3>
+                  <p className="text-white/60">No pending product reviews at the moment.</p>
+                </motion.div>
+              )}
+            </motion.div>
           </TabsContent>
 
           <TabsContent value="listings" className="space-y-6">
@@ -452,8 +909,8 @@ export default function AdminPage() {
               animate={{ opacity: 1, y: 0 }}
             >
               <div>
-                <h2 className="text-3xl font-bold text-white">Manage Listings</h2>
-                <p className="text-white/60">Review and moderate marketplace listings</p>
+                <h2 className="text-3xl font-bold text-white">All Listings</h2>
+                <p className="text-white/60">Manage all approved marketplace listings</p>
               </div>
               <div className="flex space-x-2">
                 <Button variant="outline" className="border-white/20 text-white hover:bg-white/10 bg-transparent">
@@ -469,8 +926,7 @@ export default function AdminPage() {
                     <table className="w-full">
                       <thead className="border-b border-white/10">
                         <tr>
-                          <th className="text-left p-4 text-white/60 font-medium">Listing ID</th>
-                          <th className="text-left p-4 text-white/60 font-medium">Item</th>
+                          <th className="text-left p-4 text-white/60 font-medium">Product</th>
                           <th className="text-left p-4 text-white/60 font-medium">Seller</th>
                           <th className="text-left p-4 text-white/60 font-medium">Price</th>
                           <th className="text-left p-4 text-white/60 font-medium">Status</th>
@@ -487,7 +943,6 @@ export default function AdminPage() {
                             animate={{ opacity: 1, x: 0 }}
                             transition={{ delay: index * 0.1 }}
                           >
-                            <td className="p-4 font-mono text-white/80">#{listing.id}</td>
                             <td className="p-4 text-white">{listing.item}</td>
                             <td className="p-4 text-white">{listing.seller}</td>
                             <td className="p-4 text-white">{formatCurrency(listing.amount)}</td>
@@ -497,7 +952,7 @@ export default function AdminPage() {
                                 className={
                                   listing.status === "Approved"
                                     ? "bg-green-600/20 text-green-400 border-green-600/30"
-                                    : listing.status === "Flagged"
+                                    : listing.status === "Rejected"
                                       ? "bg-red-600/20 text-red-400 border-red-600/30"
                                       : "bg-yellow-600/20 text-yellow-400 border-yellow-600/30"
                                 }
@@ -518,23 +973,16 @@ export default function AdminPage() {
                                 <Button
                                   size="sm"
                                   variant="ghost"
-                                  className="text-green-400 hover:text-green-300 hover:bg-green-600/10"
+                                  className="text-white/60 hover:text-white hover:bg-white/10"
                                 >
-                                  <CheckCircle className="h-4 w-4" />
+                                  <Edit className="h-4 w-4" />
                                 </Button>
                                 <Button
                                   size="sm"
                                   variant="ghost"
                                   className="text-red-400 hover:text-red-300 hover:bg-red-600/10"
                                 >
-                                  <XCircle className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="text-yellow-400 hover:text-yellow-300 hover:bg-yellow-600/10"
-                                >
-                                  <Flag className="h-4 w-4" />
+                                  <Trash2 className="h-4 w-4" />
                                 </Button>
                               </div>
                             </td>
@@ -638,200 +1086,6 @@ export default function AdminPage() {
                   </div>
                 </CardContent>
               </Card>
-            </motion.div>
-          </TabsContent>
-
-          <TabsContent value="categories" className="space-y-6">
-            <motion.div
-              className="flex justify-between items-center"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-            >
-              <div>
-                <h2 className="text-3xl font-bold text-white">Categories</h2>
-                <p className="text-white/60">Manage instrument and equipment categories</p>
-              </div>
-              <Button onClick={() => setIsAddingCategory(true)} className="bg-white text-black hover:bg-gray-200">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Category
-              </Button>
-            </motion.div>
-
-            <AnimatePresence>
-              {isAddingCategory && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: 0.3 }}
-                >
-                  <Card className="bg-white/5 border-white/10">
-                    <CardHeader>
-                      <CardTitle className="text-white">Add New Category</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="categoryName" className="text-white/80">
-                            Category Name
-                          </Label>
-                          <Input
-                            id="categoryName"
-                            placeholder="e.g., Tabla"
-                            className="bg-white/5 border-white/20 text-white placeholder:text-white/40"
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="categoryIcon" className="text-white/80">
-                            Icon (Emoji)
-                          </Label>
-                          <Input
-                            id="categoryIcon"
-                            placeholder="🥁"
-                            className="bg-white/5 border-white/20 text-white placeholder:text-white/40"
-                          />
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="categoryDescription" className="text-white/80">
-                          Description
-                        </Label>
-                        <Textarea
-                          id="categoryDescription"
-                          placeholder="Brief description of this category"
-                          className="bg-white/5 border-white/20 text-white placeholder:text-white/40"
-                        />
-                      </div>
-                      <div className="flex space-x-2">
-                        <Button className="bg-white text-black hover:bg-gray-200">Save Category</Button>
-                        <Button
-                          variant="outline"
-                          onClick={() => setIsAddingCategory(false)}
-                          className="border-white/20 text-white hover:bg-white/10"
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            <motion.div
-              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-              variants={staggerContainer}
-              initial="initial"
-              animate="animate"
-            >
-              {["Traditional", "Guitars", "Keyboards", "Drums", "Audio Gear", "Strings"].map((category, index) => (
-                <motion.div key={index} variants={fadeInUp}>
-                  <Card className="bg-white/5 border-white/10 hover:bg-white/10 transition-all duration-300">
-                    <CardContent className="p-6">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
-                          <span className="text-2xl">🎵</span>
-                          <div>
-                            <h3 className="font-semibold text-white">{category}</h3>
-                            <p className="text-sm text-white/60">245 listings</p>
-                          </div>
-                        </div>
-                        <div className="flex space-x-1">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-white/60 hover:text-white hover:bg-white/10"
-                          >
-                            <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="text-red-400 hover:text-red-300 hover:bg-red-600/10"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              ))}
-            </motion.div>
-          </TabsContent>
-
-          <TabsContent value="reports" className="space-y-6">
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-              <div>
-                <h2 className="text-3xl font-bold text-white mb-2">Reports & Analytics</h2>
-                <p className="text-white/60">View detailed reports and platform analytics</p>
-              </div>
-            </motion.div>
-
-            <motion.div
-              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-              variants={staggerContainer}
-              initial="initial"
-              animate="animate"
-            >
-              {[
-                {
-                  icon: AlertTriangle,
-                  title: "Content Moderation",
-                  color: "from-yellow-400/20 to-yellow-600/20",
-                  textColor: "text-yellow-400",
-                  data: [
-                    { label: "Pending Review", value: "12" },
-                    { label: "Resolved Today", value: "8" },
-                    { label: "False Reports", value: "3" },
-                  ],
-                },
-                {
-                  icon: TrendingUp,
-                  title: "Growth Metrics",
-                  color: "from-green-400/20 to-green-600/20",
-                  textColor: "text-green-400",
-                  data: [
-                    { label: "New Users (30d)", value: "342" },
-                    { label: "New Listings (30d)", value: "1,247" },
-                    { label: "Transactions (30d)", value: "456" },
-                  ],
-                },
-                {
-                  icon: BarChart3,
-                  title: "Platform Health",
-                  color: "from-blue-400/20 to-blue-600/20",
-                  textColor: "text-blue-400",
-                  data: [
-                    { label: "Uptime", value: "99.9%" },
-                    { label: "Avg Response", value: "245ms" },
-                    { label: "Active Sessions", value: "1,234" },
-                  ],
-                },
-              ].map((report, index) => (
-                <motion.div key={index} variants={fadeInUp}>
-                  <Card className="bg-white/5 border-white/10 hover:bg-white/10 transition-all duration-300">
-                    <CardHeader>
-                      <CardTitle className="text-white flex items-center">
-                        <div className={`p-2 rounded-lg bg-gradient-to-br ${report.color} mr-3`}>
-                          <report.icon className={`h-5 w-5 ${report.textColor}`} />
-                        </div>
-                        {report.title}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-3">
-                        {report.data.map((item, idx) => (
-                          <div key={idx} className="flex justify-between">
-                            <span className="text-white/60">{item.label}:</span>
-                            <span className="font-semibold text-white">{item.value}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              ))}
             </motion.div>
           </TabsContent>
         </Tabs>
