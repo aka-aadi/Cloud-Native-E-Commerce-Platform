@@ -5,16 +5,18 @@ const nextConfig = {
   
   // Optimize for production
   poweredByHeader: false,
-  generateEtags: false,
+  generateEtags: true,
   
   // Image optimization
   images: {
     domains: [
       'localhost',
-      's3.amazonaws.com',
-      'your-s3-bucket.s3.amazonaws.com'
+      'musicmart-assets.s3.amazonaws.com',
+      'musicmart-assets.s3.us-east-1.amazonaws.com',
     ],
     formats: ['image/webp', 'image/avif'],
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
+    imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
   },
   
   // Compression
@@ -54,6 +56,16 @@ const nextConfig = {
         source: '/admin',
         destination: '/admin/dashboard',
         permanent: true,
+      },
+    ]
+  },
+  
+  // Rewrites for API routes
+  async rewrites() {
+    return [
+      {
+        source: '/api/health',
+        destination: '/api/health',
       },
     ]
   },
@@ -101,6 +113,23 @@ const nextConfig = {
     // Ignore ESLint errors during builds (not recommended for production)
     ignoreDuringBuilds: false,
   },
+  
+  // Page extensions
+  pageExtensions: ['ts', 'tsx', 'js', 'jsx', 'md', 'mdx'],
+  
+  // Trailing slash
+  trailingSlash: false,
+  
+  // React strict mode
+  reactStrictMode: true,
+  
+  // SWC minification
+  swcMinify: true,
+  
+  // Bundle analyzer (uncomment to enable)
+  // bundleAnalyzer: {
+  //   enabled: process.env.ANALYZE === 'true',
+  // },
 }
 
 export default nextConfig

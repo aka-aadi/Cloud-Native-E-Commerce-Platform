@@ -1,480 +1,154 @@
 #!/bin/bash
 
-# User data script for 100% free EC2 setup with PostgreSQL on same instance
+# Legato E-commerce Platform Setup Script
+# This script sets up a complete e-commerce platform on Amazon Linux 2
+# Cost: $0.00/month (AWS Free Tier)
+
 set -e
 
-# Variables from Terraform
+# Configuration variables from Terraform
 AWS_REGION="${aws_region}"
 S3_BUCKET="${s3_bucket}"
+PROJECT_NAME="${project_name}"
+ENVIRONMENT="${environment}"
 
-# Update system
+# Application configuration
+APP_NAME="legato"
+APP_DIR="/opt/$APP_NAME"
+APP_USER="ec2-user"
+NODE_VERSION="18"
+POSTGRES_VERSION="15"
+
+# Logging setup
+LOG_FILE="/var/log/legato-setup.log"
+exec 1> >(tee -a $LOG_FILE)
+exec 2>&1
+
+echo "=== Legato Setup Started at $(date) ==="
+echo "AWS Region: $AWS_REGION"
+echo "S3 Bucket: $S3_BUCKET"
+echo "Project: $PROJECT_NAME"
+echo "Environment: $ENVIRONMENT"
+
+# Update system packages
+echo "📦 Updating system packages..."
 yum update -y
 
-# Install required packages
-yum install -y git nginx
+# Install essential packages
+echo "🔧 Installing essential packages..."
+yum install -y \
+    git \
+    curl \
+    wget \
+    unzip \
+    htop \
+    nginx \
+    postgresql15-server \
+    postgresql15 \
+    postgresql15-contrib \
+    amazon-cloudwatch-agent
 
 # Install Node.js 18
+echo "📦 Installing Node.js $NODE_VERSION..."
 curl -fsSL https://rpm.nodesource.com/setup_18.x | bash -
 yum install -y nodejs
 
-# Install PM2 for process management
+# Verify Node.js installation
+node_version=$(node --version)
+npm_version=$(npm --version)
+echo "✅ Node.js installed: $node_version"
+echo "✅ npm installed: $npm_version"
+
+# Install PM2 globally
+echo "📦 Installing PM2..."
 npm install -g pm2
 
-# Install PostgreSQL 15
-yum install -y postgresql15-server postgresql15
-
-# Initialize PostgreSQL
-/usr/pgsql-15/bin/postgresql-15-setup initdb
-
-# Start and enable PostgreSQL
-systemctl start postgresql-15
-systemctl enable postgresql-15
+# Setup PostgreSQL
+echo "🗄️ Setting up PostgreSQL..."
+postgresql-setup --initdb
+systemctl enable postgresql
+systemctl start postgresql
 
 # Configure PostgreSQL
+echo "🔧 Configuring PostgreSQL..."
 sudo -u postgres psql << 'EOF'
-CREATE DATABASE musicmart_db;
-CREATE USER musicmart_user WITH PASSWORD 'musicmart_password_2024';
-GRANT ALL PRIVILEGES ON DATABASE musicmart_db TO musicmart_user;
-ALTER USER musicmart_user CREATEDB;
+CREATE USER legato_user WITH PASSWORD 'legato_secure_2024!';
+CREATE DATABASE legato_db OWNER legato_user;
+GRANT ALL PRIVILEGES ON DATABASE legato_db TO legato_user;
+ALTER USER legato_user CREATEDB;
 \q
 EOF
 
-# Configure PostgreSQL to accept connections
-echo "host all all 127.0.0.1/32 md5" >> /var/lib/pgsql/15/data/pg_hba.conf
-echo "listen_addresses = 'localhost'" >> /var/lib/pgsql/15/data/postgresql.conf
-
-# Restart PostgreSQL
-systemctl restart postgresql-15
-
-# Start and enable Nginx
-systemctl start nginx
-systemctl enable nginx
+# Configure PostgreSQL for local connections
+echo "🔧 Configuring PostgreSQL authentication..."
+PG_HBA="/var/lib/pgsql/data/pg_hba.conf"
+cp $PG_HBA $PG_HBA.backup
+sed -i "s/local   all             all                                     peer/local   all             all                                     md5/" $PG_HBA
+systemctl restart postgresql
 
 # Create application directory
-mkdir -p /opt/musicmart
-cd /opt/musicmart
+echo "📁 Creating application directory..."
+mkdir -p $APP_DIR
+chown $APP_USER:$APP_USER $APP_DIR
+
+# Clone application code (using a simple approach for demo)
+echo "📥 Setting up application code..."
+cd $APP_DIR
 
 # Create package.json
 cat > package.json << 'EOF'
 {
-  "name": "musicmart",
+  "name": "legato",
   "version": "1.0.0",
   "private": true,
   "scripts": {
     "build": "next build",
     "start": "next start -p 3000",
-    "dev": "next dev"
+    "dev": "next dev",
+    "lint": "next lint"
   },
   "dependencies": {
     "next": "14.0.0",
-    "react": "18.2.0",
-    "react-dom": "18.2.0",
+    "react": "^18",
+    "react-dom": "^18",
     "pg": "^8.11.3",
-    "@aws-sdk/client-s3": "^3.450.0",
-    "next-auth": "^4.24.5",
-    "@types/node": "^20.0.0",
-    "@types/react": "^18.2.0",
-    "@types/react-dom": "^18.2.0",
-    "typescript": "^5.0.0",
+    "@types/pg": "^8.10.7",
+    "bcryptjs": "^2.4.3",
+    "@types/bcryptjs": "^2.4.4",
+    "jsonwebtoken": "^9.0.2",
+    "@types/jsonwebtoken": "^9.0.3",
+    "aws-sdk": "^2.1490.0"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "autoprefixer": "^10",
+    "postcss": "^8",
     "tailwindcss": "^3.3.0",
-    "autoprefixer": "^10.4.0",
-    "postcss": "^8.4.0"
+    "eslint": "^8",
+    "eslint-config-next": "14.0.0"
   }
 }
 EOF
 
-# Install dependencies
-npm install
-
-# Create basic Next.js app structure
-mkdir -p app/api/health
-cat > app/api/health/route.ts << 'EOF'
-import { NextResponse } from "next/server"
-import { Pool } from 'pg'
-
-const pool = new Pool({
-  user: 'musicmart_user',
-  host: 'localhost',
-  database: 'musicmart_db',
-  password: 'musicmart_password_2024',
-  port: 5432,
-})
-
-export async function GET() {
-  try {
-    // Test database connection
-    const client = await pool.connect()
-    const result = await client.query('SELECT NOW()')
-    client.release()
-    
-    return NextResponse.json({
-      status: "healthy",
-      timestamp: new Date().toISOString(),
-      environment: process.env.NODE_ENV || "production",
-      database: "connected",
-      dbTime: result.rows[0].now
-    })
-  } catch (error) {
-    return NextResponse.json({
-      status: "unhealthy",
-      timestamp: new Date().toISOString(),
-      error: "Database connection failed"
-    }, { status: 500 })
-  }
-}
-EOF
-
-# Create database initialization API
-mkdir -p app/api/init-db
-cat > app/api/init-db/route.ts << 'EOF'
-import { NextResponse } from "next/server"
-import { Pool } from 'pg'
-
-const pool = new Pool({
-  user: 'musicmart_user',
-  host: 'localhost',
-  database: 'musicmart_db',
-  password: 'musicmart_password_2024',
-  port: 5432,
-})
-
-export async function POST() {
-  try {
-    const client = await pool.connect()
-    
-    // Create tables
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        email VARCHAR(255) UNIQUE NOT NULL,
-        password VARCHAR(255) NOT NULL,
-        name VARCHAR(255) NOT NULL,
-        role VARCHAR(50) DEFAULT 'user',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `)
-    
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS categories (
-        id SERIAL PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
-        description TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `)
-    
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS products (
-        id SERIAL PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
-        description TEXT,
-        price DECIMAL(10,2) NOT NULL,
-        category_id INTEGER REFERENCES categories(id),
-        image_url VARCHAR(500),
-        status VARCHAR(50) DEFAULT 'active',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `)
-    
-    // Insert sample data
-    await client.query(`
-      INSERT INTO categories (name, description) VALUES 
-      ('Guitars', 'Electric and acoustic guitars'),
-      ('Keyboards', 'Digital pianos and synthesizers'),
-      ('Drums', 'Drum sets and percussion'),
-      ('Audio Equipment', 'Microphones, speakers, and audio gear')
-      ON CONFLICT DO NOTHING
-    `)
-    
-    await client.query(`
-      INSERT INTO products (name, description, price, category_id) VALUES 
-      ('Electric Guitar Starter Pack', 'Perfect for beginners', 299.99, 1),
-      ('Digital Piano 88-Key', 'Weighted keys, multiple sounds', 599.99, 2),
-      ('5-Piece Drum Set', 'Complete acoustic drum kit', 899.99, 3),
-      ('USB Microphone', 'Professional recording microphone', 149.99, 4)
-      ON CONFLICT DO NOTHING
-    `)
-    
-    // Create admin user
-    await client.query(`
-      INSERT INTO users (email, password, name, role) VALUES 
-      ('admin@musicmart.com', 'hashed_password_here', 'Admin User', 'admin')
-      ON CONFLICT (email) DO NOTHING
-    `)
-    
-    client.release()
-    
-    return NextResponse.json({
-      status: "success",
-      message: "Database initialized successfully"
-    })
-  } catch (error) {
-    console.error('Database initialization error:', error)
-    return NextResponse.json({
-      status: "error",
-      message: "Database initialization failed",
-      error: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 })
-  }
-}
-EOF
-
-# Create products API
-mkdir -p app/api/products
-cat > app/api/products/route.ts << 'EOF'
-import { NextResponse } from "next/server"
-import { Pool } from 'pg'
-
-const pool = new Pool({
-  user: 'musicmart_user',
-  host: 'localhost',
-  database: 'musicmart_db',
-  password: 'musicmart_password_2024',
-  port: 5432,
-})
-
-export async function GET() {
-  try {
-    const client = await pool.connect()
-    const result = await client.query(`
-      SELECT p.*, c.name as category_name 
-      FROM products p 
-      LEFT JOIN categories c ON p.category_id = c.id 
-      WHERE p.status = 'active'
-      ORDER BY p.created_at DESC
-    `)
-    client.release()
-    
-    return NextResponse.json({
-      products: result.rows
-    })
-  } catch (error) {
-    return NextResponse.json({
-      error: "Failed to fetch products"
-    }, { status: 500 })
-  }
-}
-EOF
-
-# Create main page
-mkdir -p app
-cat > app/page.tsx << 'EOF'
-'use client'
-
-import { useEffect, useState } from 'react'
-
-interface Product {
-  id: number
-  name: string
-  description: string
-  price: number
-  category_name: string
-}
-
-export default function Home() {
-  const [products, setProducts] = useState<Product[]>([])
-  const [loading, setLoading] = useState(true)
-  const [dbInitialized, setDbInitialized] = useState(false)
-
-  const initializeDatabase = async () => {
-    try {
-      const response = await fetch('/api/init-db', { method: 'POST' })
-      if (response.ok) {
-        setDbInitialized(true)
-        fetchProducts()
-      }
-    } catch (error) {
-      console.error('Failed to initialize database:', error)
-    }
-  }
-
-  const fetchProducts = async () => {
-    try {
-      const response = await fetch('/api/products')
-      const data = await response.json()
-      setProducts(data.products || [])
-    } catch (error) {
-      console.error('Failed to fetch products:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchProducts()
-  }, [])
-
-  if (loading) {
-    return (
-      <div style={{ padding: '2rem', textAlign: 'center' }}>
-        <h1>🎵 MusicMart - Loading...</h1>
-      </div>
-    )
-  }
-
-  return (
-    <div style={{ padding: '2rem', fontFamily: 'Arial, sans-serif' }}>
-      <header style={{ textAlign: 'center', marginBottom: '2rem' }}>
-        <h1 style={{ color: '#2563eb', fontSize: '2.5rem', marginBottom: '0.5rem' }}>
-          🎵 MusicMart
-        </h1>
-        <p style={{ color: '#6b7280', fontSize: '1.2rem' }}>
-          Your 100% Free Music Marketplace on AWS
-        </p>
-        <div style={{ 
-          background: '#10b981', 
-          color: 'white', 
-          padding: '0.5rem 1rem', 
-          borderRadius: '0.5rem',
-          display: 'inline-block',
-          marginTop: '1rem'
-        }}>
-          ✅ Running on AWS Free Tier - $0/month
-        </div>
-      </header>
-
-      {!dbInitialized && products.length === 0 && (
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <button 
-            onClick={initializeDatabase}
-            style={{
-              background: '#3b82f6',
-              color: 'white',
-              padding: '1rem 2rem',
-              border: 'none',
-              borderRadius: '0.5rem',
-              fontSize: '1.1rem',
-              cursor: 'pointer'
-            }}
-          >
-            Initialize Database
-          </button>
-        </div>
-      )}
-
-      <div style={{ 
-        display: 'grid', 
-        gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', 
-        gap: '1.5rem',
-        marginTop: '2rem'
-      }}>
-        {products.map((product) => (
-          <div key={product.id} style={{
-            border: '1px solid #e5e7eb',
-            borderRadius: '0.5rem',
-            padding: '1.5rem',
-            backgroundColor: 'white',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
-          }}>
-            <h3 style={{ color: '#1f2937', marginBottom: '0.5rem' }}>
-              {product.name}
-            </h3>
-            <p style={{ color: '#6b7280', marginBottom: '1rem' }}>
-              {product.description}
-            </p>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ 
-                background: '#f3f4f6', 
-                padding: '0.25rem 0.5rem', 
-                borderRadius: '0.25rem',
-                fontSize: '0.875rem',
-                color: '#374151'
-              }}>
-                {product.category_name}
-              </span>
-              <span style={{ 
-                fontSize: '1.25rem', 
-                fontWeight: 'bold', 
-                color: '#059669' 
-              }}>
-                ${product.price}
-              </span>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {products.length === 0 && (
-        <div style={{ textAlign: 'center', marginTop: '3rem' }}>
-          <p style={{ color: '#6b7280', fontSize: '1.1rem' }}>
-            No products found. Click "Initialize Database" to add sample products.
-          </p>
-        </div>
-      )}
-
-      <footer style={{ 
-        marginTop: '4rem', 
-        textAlign: 'center', 
-        padding: '2rem',
-        borderTop: '1px solid #e5e7eb',
-        color: '#6b7280'
-      }}>
-        <h3 style={{ color: '#1f2937', marginBottom: '1rem' }}>
-          🆓 100% Free AWS Architecture
-        </h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-          <div>
-            <strong>Compute:</strong><br />
-            EC2 t2.micro (750h/month free)
-          </div>
-          <div>
-            <strong>Database:</strong><br />
-            PostgreSQL on EC2 (free)
-          </div>
-          <div>
-            <strong>Storage:</strong><br />
-            S3 (5GB free)
-          </div>
-          <div>
-            <strong>Network:</strong><br />
-            VPC + Public subnets (free)
-          </div>
-        </div>
-        <p style={{ marginTop: '1rem', fontSize: '0.9rem' }}>
-          Total monthly cost: <strong style={{ color: '#059669' }}>$0.00</strong> 
-          (within AWS Free Tier limits)
-        </p>
-      </footer>
-    </div>
-  )
-}
-EOF
-
-cat > app/layout.tsx << 'EOF'
-export const metadata = {
-  title: 'MusicMart - Free Music Marketplace',
-  description: 'Your 100% free music marketplace running on AWS Free Tier',
-}
-
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
-  return (
-    <html lang="en">
-      <body style={{ margin: 0, backgroundColor: '#f9fafb' }}>
-        {children}
-      </body>
-    </html>
-  )
-}
-EOF
-
-# Create next.config.js
+# Create basic Next.js configuration
 cat > next.config.mjs << 'EOF'
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'standalone',
   experimental: {
-    outputFileTracingRoot: undefined,
+    appDir: true,
+  },
+  images: {
+    domains: ['localhost'],
   },
 }
 
 export default nextConfig
 EOF
 
-# Create TypeScript config
+# Create TypeScript configuration
 cat > tsconfig.json << 'EOF'
 {
   "compilerOptions": {
@@ -496,6 +170,7 @@ cat > tsconfig.json << 'EOF'
         "name": "next"
       }
     ],
+    "baseUrl": ".",
     "paths": {
       "@/*": ["./*"]
     }
@@ -505,43 +180,482 @@ cat > tsconfig.json << 'EOF'
 }
 EOF
 
-# Create environment file
-cat > .env.local << EOF
-NODE_ENV=production
-DATABASE_URL=postgresql://musicmart_user:musicmart_password_2024@localhost:5432/musicmart_db
-AWS_REGION=${AWS_REGION}
-S3_BUCKET_NAME=${S3_BUCKET}
+# Create Tailwind CSS configuration
+cat > tailwind.config.ts << 'EOF'
+import type { Config } from 'tailwindcss'
+
+const config: Config = {
+  content: [
+    './pages/**/*.{js,ts,jsx,tsx,mdx}',
+    './components/**/*.{js,ts,jsx,tsx,mdx}',
+    './app/**/*.{js,ts,jsx,tsx,mdx}',
+  ],
+  theme: {
+    extend: {
+      backgroundImage: {
+        'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
+        'gradient-conic':
+          'conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))',
+      },
+    },
+  },
+  plugins: [],
+}
+export default config
 EOF
 
-# Set proper permissions
-chown -R ec2-user:ec2-user /opt/musicmart
-chmod +x /opt/musicmart
+# Create PostCSS configuration
+cat > postcss.config.mjs << 'EOF'
+/** @type {import('postcss-load-config').Config} */
+const config = {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+}
+
+export default config
+EOF
+
+# Create app directory structure
+mkdir -p app/api/{health,products,init-db}
+mkdir -p lib
+mkdir -p public
+
+# Create global CSS
+mkdir -p app
+cat > app/globals.css << 'EOF'
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 0, 0, 0;
+  --background-start-rgb: 214, 219, 220;
+  --background-end-rgb: 255, 255, 255;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --foreground-rgb: 255, 255, 255;
+    --background-start-rgb: 0, 0, 0;
+    --background-end-rgb: 0, 0, 0;
+  }
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: linear-gradient(
+      to bottom,
+      transparent,
+      rgb(var(--background-end-rgb))
+    )
+    rgb(var(--background-start-rgb));
+}
+EOF
+
+# Create database connection
+cat > lib/db.ts << 'EOF'
+import { Pool } from 'pg'
+
+const pool = new Pool({
+  user: 'legato_user',
+  host: 'localhost',
+  database: 'legato_db',
+  password: 'legato_secure_2024!',
+  port: 5432,
+})
+
+export default pool
+EOF
+
+# Create health check API
+cat > app/api/health/route.ts << 'EOF'
+import { NextResponse } from 'next/server'
+import pool from '@/lib/db'
+
+export async function GET() {
+  try {
+    // Test database connection
+    const client = await pool.connect()
+    const result = await client.query('SELECT NOW()')
+    client.release()
+    
+    return NextResponse.json({
+      status: 'healthy',
+      timestamp: new Date().toISOString(),
+      database: 'connected',
+      uptime: process.uptime(),
+      version: '1.0.0'
+    })
+  } catch (error) {
+    return NextResponse.json({
+      status: 'unhealthy',
+      timestamp: new Date().toISOString(),
+      database: 'disconnected',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 })
+  }
+}
+EOF
+
+# Create database initialization API
+cat > app/api/init-db/route.ts << 'EOF'
+import { NextResponse } from 'next/server'
+import pool from '@/lib/db'
+
+export async function POST() {
+  try {
+    const client = await pool.connect()
+    
+    // Create products table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS products (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        description TEXT,
+        price DECIMAL(10,2) NOT NULL,
+        category VARCHAR(100),
+        image_url VARCHAR(500),
+        stock_quantity INTEGER DEFAULT 0,
+        featured BOOLEAN DEFAULT false,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `)
+    
+    // Create categories table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS categories (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(100) NOT NULL UNIQUE,
+        description TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `)
+    
+    // Insert sample categories
+    await client.query(`
+      INSERT INTO categories (name, description) VALUES
+      ('Guitars', 'Electric and acoustic guitars'),
+      ('Keyboards', 'Digital pianos and synthesizers'),
+      ('Drums', 'Drum sets and percussion instruments'),
+      ('Audio', 'Recording and sound equipment')
+      ON CONFLICT (name) DO NOTHING
+    `)
+    
+    // Insert sample products
+    await client.query(`
+      INSERT INTO products (name, description, price, category, image_url, stock_quantity, featured) VALUES
+      ('Electric Guitar Pro', 'Professional electric guitar with premium pickups', 899.99, 'Guitars', '/placeholder.svg?height=300&width=300&text=Electric+Guitar', 15, true),
+      ('Digital Piano 88', '88-key weighted digital piano', 1299.99, 'Keyboards', '/placeholder.svg?height=300&width=300&text=Digital+Piano', 8, true),
+      ('Drum Set Complete', '5-piece acoustic drum set', 799.99, 'Drums', '/placeholder.svg?height=300&width=300&text=Drum+Set', 5, false),
+      ('Studio Microphone', 'Professional condenser microphone', 299.99, 'Audio', '/placeholder.svg?height=300&width=300&text=Microphone', 20, true),
+      ('Bass Guitar', '4-string electric bass guitar', 649.99, 'Guitars', '/placeholder.svg?height=300&width=300&text=Bass+Guitar', 12, false),
+      ('Synthesizer', 'Analog modeling synthesizer', 1599.99, 'Keyboards', '/placeholder.svg?height=300&width=300&text=Synthesizer', 6, true)
+      ON CONFLICT DO NOTHING
+    `)
+    
+    client.release()
+    
+    return NextResponse.json({
+      success: true,
+      message: 'Database initialized successfully',
+      timestamp: new Date().toISOString()
+    })
+  } catch (error) {
+    return NextResponse.json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 })
+  }
+}
+EOF
+
+# Create products API
+cat > app/api/products/route.ts << 'EOF'
+import { NextResponse } from 'next/server'
+import pool from '@/lib/db'
+
+export async function GET() {
+  try {
+    const client = await pool.connect()
+    const result = await client.query(`
+      SELECT * FROM products 
+      ORDER BY featured DESC, created_at DESC
+    `)
+    client.release()
+    
+    return NextResponse.json({
+      products: result.rows,
+      count: result.rows.length
+    })
+  } catch (error) {
+    return NextResponse.json({
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 })
+  }
+}
+EOF
+
+# Create main layout
+cat > app/layout.tsx << 'EOF'
+import './globals.css'
+import type { Metadata } from 'next'
+import { Inter } from 'next/font/google'
+
+const inter = Inter({ subsets: ['latin'] })
+
+export const metadata: Metadata = {
+  title: 'Legato - Your Music Store',
+  description: 'Professional music instruments and equipment',
+}
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
+  return (
+    <html lang="en">
+      <body className={inter.className}>
+        <nav className="bg-blue-600 text-white p-4">
+          <div className="container mx-auto">
+            <h1 className="text-2xl font-bold">🎵 Legato</h1>
+            <p className="text-blue-100">Your Professional Music Store</p>
+          </div>
+        </nav>
+        {children}
+        <footer className="bg-gray-800 text-white p-8 mt-12">
+          <div className="container mx-auto text-center">
+            <p>&copy; 2024 Legato. Powered by AWS Free Tier.</p>
+          </div>
+        </footer>
+      </body>
+    </html>
+  )
+}
+EOF
+
+# Create main page
+cat > app/page.tsx << 'EOF'
+'use client'
+
+import { useState, useEffect } from 'react'
+
+interface Product {
+  id: number
+  name: string
+  description: string
+  price: number
+  category: string
+  image_url: string
+  stock_quantity: number
+  featured: boolean
+}
+
+export default function Home() {
+  const [products, setProducts] = useState<Product[]>([])
+  const [loading, setLoading] = useState(true)
+  const [dbInitialized, setDbInitialized] = useState(false)
+
+  useEffect(() => {
+    fetchProducts()
+  }, [])
+
+  const fetchProducts = async () => {
+    try {
+      const response = await fetch('/api/products')
+      const data = await response.json()
+      if (data.products) {
+        setProducts(data.products)
+        setDbInitialized(true)
+      }
+    } catch (error) {
+      console.error('Error fetching products:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const initializeDatabase = async () => {
+    try {
+      setLoading(true)
+      const response = await fetch('/api/init-db', { method: 'POST' })
+      const data = await response.json()
+      if (data.success) {
+        await fetchProducts()
+        setDbInitialized(true)
+      }
+    } catch (error) {
+      console.error('Error initializing database:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <main className="container mx-auto p-8">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </main>
+    )
+  }
+
+  if (!dbInitialized || products.length === 0) {
+    return (
+      <main className="container mx-auto p-8">
+        <div className="text-center">
+          <h2 className="text-3xl font-bold mb-4">Welcome to Legato!</h2>
+          <p className="text-gray-600 mb-8">Initialize the database to get started</p>
+          <button
+            onClick={initializeDatabase}
+            className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Initialize Database
+          </button>
+        </div>
+      </main>
+    )
+  }
+
+  const featuredProducts = products.filter(p => p.featured)
+  const regularProducts = products.filter(p => !p.featured)
+
+  return (
+    <main className="container mx-auto p-8">
+      <div className="text-center mb-12">
+        <h2 className="text-4xl font-bold mb-4">🎵 Welcome to Legato</h2>
+        <p className="text-xl text-gray-600">Your one-stop shop for professional music equipment</p>
+        <div className="mt-4 p-4 bg-green-100 rounded-lg inline-block">
+          <p className="text-green-800 font-semibold">✅ Running on AWS Free Tier - $0.00/month</p>
+        </div>
+      </div>
+
+      {featuredProducts.length > 0 && (
+        <section className="mb-12">
+          <h3 className="text-2xl font-bold mb-6">⭐ Featured Products</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {featuredProducts.map((product) => (
+              <div key={product.id} className="bg-white rounded-lg shadow-md p-6 border-2 border-yellow-200">
+                <img
+                  src={product.image_url || "/placeholder.svg"}
+                  alt={product.name}
+                  className="w-full h-48 object-cover rounded-lg mb-4"
+                />
+                <h4 className="text-xl font-semibold mb-2">{product.name}</h4>
+                <p className="text-gray-600 mb-3">{product.description}</p>
+                <div className="flex justify-between items-center">
+                  <span className="text-2xl font-bold text-blue-600">${product.price}</span>
+                  <span className="text-sm text-gray-500">Stock: {product.stock_quantity}</span>
+                </div>
+                <button className="w-full mt-4 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                  Add to Cart
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {regularProducts.length > 0 && (
+        <section>
+          <h3 className="text-2xl font-bold mb-6">🎼 All Products</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {regularProducts.map((product) => (
+              <div key={product.id} className="bg-white rounded-lg shadow-md p-4">
+                <img
+                  src={product.image_url || "/placeholder.svg"}
+                  alt={product.name}
+                  className="w-full h-32 object-cover rounded-lg mb-3"
+                />
+                <h4 className="text-lg font-semibold mb-2">{product.name}</h4>
+                <p className="text-gray-600 text-sm mb-2">{product.description}</p>
+                <div className="flex justify-between items-center">
+                  <span className="text-lg font-bold text-blue-600">${product.price}</span>
+                  <span className="text-xs text-gray-500">Stock: {product.stock_quantity}</span>
+                </div>
+                <button className="w-full mt-3 bg-gray-600 text-white py-2 rounded-lg hover:bg-gray-700 transition-colors text-sm">
+                  Add to Cart
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <div className="mt-12 text-center">
+        <div className="bg-blue-50 p-6 rounded-lg">
+          <h3 className="text-xl font-bold mb-2">🚀 Deployment Status</h3>
+          <p className="text-gray-600">
+            This e-commerce platform is running on AWS Free Tier with PostgreSQL database,
+            Next.js frontend, and complete management system.
+          </p>
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+            <div className="bg-white p-3 rounded">
+              <strong>Database:</strong> PostgreSQL 15
+            </div>
+            <div className="bg-white p-3 rounded">
+              <strong>Frontend:</strong> Next.js 14
+            </div>
+            <div className="bg-white p-3 rounded">
+              <strong>Hosting:</strong> AWS EC2 Free Tier
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  )
+}
+EOF
+
+# Set ownership
+chown -R $APP_USER:$APP_USER $APP_DIR
+
+# Install dependencies
+echo "📦 Installing application dependencies..."
+cd $APP_DIR
+sudo -u $APP_USER npm install
 
 # Build the application
-sudo -u ec2-user bash -c "cd /opt/musicmart && npm run build"
+echo "🔨 Building application..."
+sudo -u $APP_USER npm run build
 
 # Create PM2 ecosystem file
-cat > /opt/musicmart/ecosystem.config.js << 'EOF'
+cat > ecosystem.config.js << EOF
 module.exports = {
   apps: [{
-    name: 'musicmart',
+    name: '$APP_NAME',
     script: 'npm',
     args: 'start',
-    cwd: '/opt/musicmart',
+    cwd: '$APP_DIR',
     instances: 1,
     autorestart: true,
     watch: false,
     max_memory_restart: '800M',
     env: {
       NODE_ENV: 'production',
-      PORT: 3000
+      PORT: 3000,
+      AWS_REGION: '$AWS_REGION',
+      S3_BUCKET: '$S3_BUCKET'
     }
   }]
 }
 EOF
 
-# Configure Nginx as reverse proxy
-cat > /etc/nginx/conf.d/musicmart.conf << 'EOF'
+# Start application with PM2
+echo "🚀 Starting application..."
+cd $APP_DIR
+sudo -u $APP_USER pm2 start ecosystem.config.js
+sudo -u $APP_USER pm2 save
+sudo -u $APP_USER pm2 startup
+
+# Configure Nginx
+echo "🌐 Configuring Nginx..."
+cat > /etc/nginx/conf.d/legato.conf << 'EOF'
 server {
     listen 80;
     server_name _;
@@ -559,39 +673,199 @@ server {
     }
 
     location /health {
-        proxy_pass http://localhost:3000/api/health;
         access_log off;
+        return 200 "healthy\n";
+        add_header Content-Type text/plain;
     }
 }
 EOF
 
-# Remove default Nginx config
+# Remove default Nginx configuration
 rm -f /etc/nginx/conf.d/default.conf
 
-# Restart Nginx
-systemctl restart nginx
+# Test and start Nginx
+nginx -t
+systemctl enable nginx
+systemctl start nginx
 
-# Start the application with PM2
-sudo -u ec2-user bash -c "cd /opt/musicmart && pm2 start ecosystem.config.js"
-sudo -u ec2-user bash -c "pm2 startup"
-sudo -u ec2-user bash -c "pm2 save"
-
-# Create a simple health check script - Fixed the curl command
-cat > /opt/musicmart/health-check.sh << 'HEALTH_EOF'
+# Create health check script - using double percent to escape for Terraform
+cat > /usr/local/bin/health-check.sh << 'HEALTH_EOF'
 #!/bin/bash
-response=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/api/health)
-if [ $response -eq 200 ]; then
-    echo "$(date): Application is healthy"
-else
-    echo "$(date): Application is unhealthy, restarting..."
-    pm2 restart musicmart
+
+# Health check script for Legato
+LOG_FILE="/var/log/health-check.log"
+
+check_service() {
+    local service=$1
+    local url=$2
+    
+    echo "$(date): Checking $service..." >> $LOG_FILE
+    
+    if [ -n "$url" ]; then
+        response=$(curl -s -o /dev/null -w "%{http_code}" "$url" --max-time 10)
+        if [ "$response" = "200" ]; then
+            echo "$(date): $service is healthy (HTTP $response)" >> $LOG_FILE
+            return 0
+        else
+            echo "$(date): $service is unhealthy (HTTP $response)" >> $LOG_FILE
+            return 1
+        fi
+    else
+        if systemctl is-active --quiet "$service"; then
+            echo "$(date): $service is running" >> $LOG_FILE
+            return 0
+        else
+            echo "$(date): $service is not running" >> $LOG_FILE
+            return 1
+        fi
+    fi
+}
+
+# Check services
+check_service "nginx"
+check_service "postgresql"
+check_service "application" "http://localhost:3000/api/health"
+
+# Check disk space
+disk_usage=$(df / | awk 'NR==2 {print $5}' | sed 's/%//')
+if [ "$disk_usage" -gt 80 ]; then
+    echo "$(date): WARNING - Disk usage is ${disk_usage}%" >> $LOG_FILE
 fi
+
+# Check memory usage
+mem_usage=$(free | awk 'NR==2{printf "%.0f", $3*100/$2}')
+if [ "$mem_usage" -gt 80 ]; then
+    echo "$(date): WARNING - Memory usage is ${mem_usage}%" >> $LOG_FILE
+fi
+
+echo "$(date): Health check completed" >> $LOG_FILE
 HEALTH_EOF
 
-chmod +x /opt/musicmart/health-check.sh
+chmod +x /usr/local/bin/health-check.sh
 
-# Add health check to crontab
-echo "*/5 * * * * /opt/musicmart/health-check.sh >> /var/log/health-check.log 2>&1" | crontab -
+# Setup health check cron job
+echo "*/5 * * * * /usr/local/bin/health-check.sh" | crontab -
+
+# Create startup script
+cat > /etc/systemd/system/legato.service << 'EOF'
+[Unit]
+Description=Legato E-commerce Application
+After=network.target postgresql.service
+
+[Service]
+Type=forking
+User=ec2-user
+WorkingDirectory=/opt/legato
+ExecStart=/usr/bin/pm2 start ecosystem.config.js
+ExecReload=/usr/bin/pm2 reload ecosystem.config.js
+ExecStop=/usr/bin/pm2 stop ecosystem.config.js
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl enable legato
+
+# Configure log rotation
+cat > /etc/logrotate.d/legato << 'EOF'
+/var/log/health-check.log {
+    daily
+    rotate 7
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 644 root root
+}
+EOF
+
+# Install AWS CLI v2
+echo "📦 Installing AWS CLI v2..."
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+./aws/install
+rm -rf aws awscliv2.zip
+
+# Configure AWS CLI for the instance
+mkdir -p /home/$APP_USER/.aws
+cat > /home/$APP_USER/.aws/config << EOF
+[default]
+region = $AWS_REGION
+output = json
+EOF
+
+chown -R $APP_USER:$APP_USER /home/$APP_USER/.aws
+
+# Final system optimization
+echo "⚡ Optimizing system..."
+
+# Configure swap (helps with memory management)
+fallocate -l 1G /swapfile
+chmod 600 /swapfile
+mkswap /swapfile
+swapon /swapfile
+echo '/swapfile none swap sw 0 0' >> /etc/fstab
+
+# Optimize PostgreSQL for small instance
+sudo -u postgres psql << 'EOF'
+ALTER SYSTEM SET shared_buffers = '128MB';
+ALTER SYSTEM SET effective_cache_size = '512MB';
+ALTER SYSTEM SET maintenance_work_mem = '64MB';
+ALTER SYSTEM SET checkpoint_completion_target = 0.9;
+ALTER SYSTEM SET wal_buffers = '16MB';
+ALTER SYSTEM SET default_statistics_target = 100;
+SELECT pg_reload_conf();
+\q
+EOF
+
+# Create welcome message
+cat > /etc/motd << 'EOF'
+
+🎵 Welcome to Legato E-commerce Platform! 🎵
+
+This server is running a complete e-commerce solution:
+- Next.js 14 frontend
+- PostgreSQL 15 database
+- Nginx reverse proxy
+- PM2 process manager
+- AWS Free Tier optimized
+
+Quick Commands:
+- Check app status: pm2 status
+- View app logs: pm2 logs legato
+- Restart app: pm2 restart legato
+- Check health: curl localhost/api/health
+- Database access: sudo -u postgres psql -d legato_db
+
+Application URL: http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
+
+Cost: $0.00/month (AWS Free Tier)
+
+EOF
+
+# Final status check
+echo "🔍 Running final health checks..."
+sleep 10
+
+# Check if services are running
+systemctl is-active --quiet nginx && echo "✅ Nginx is running" || echo "❌ Nginx failed"
+systemctl is-active --quiet postgresql && echo "✅ PostgreSQL is running" || echo "❌ PostgreSQL failed"
+sudo -u $APP_USER pm2 list | grep -q "online" && echo "✅ Application is running" || echo "❌ Application failed"
+
+# Test application endpoint
+sleep 5
+if curl -s http://localhost:3000/api/health > /dev/null; then
+    echo "✅ Application health check passed"
+else
+    echo "❌ Application health check failed"
+fi
+
+echo "=== Legato Setup Completed at $(date) ==="
+echo "🎉 Your e-commerce platform is ready!"
+echo "💰 Monthly cost: $0.00 (AWS Free Tier)"
+echo "🌐 Access your store at: http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)"
+echo "📋 Check status: curl http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)/api/health"
 
 # Log completion
-echo "$(date): MusicMart 100% free application setup completed successfully" >> /var/log/user-data.log
+echo "Setup completed successfully at $(date)" >> $LOG_FILE

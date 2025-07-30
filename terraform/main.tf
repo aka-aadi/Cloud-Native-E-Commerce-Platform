@@ -1,4 +1,3 @@
-# Terraform configuration for 100% Free AWS infrastructure
 terraform {
   required_version = ">= 1.0"
   required_providers {
@@ -6,40 +5,47 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
-  }
-  # Using local backend instead of S3 to avoid costs
-  backend "local" {
-    path = "terraform.tfstate"
-  }
-}
-
-provider "aws" {
-  region = var.aws_region
-  
-  default_tags {
-    tags = {
-      Project     = "MusicMart"
-      Environment = var.environment
-      ManagedBy   = "Terraform"
-      Tier        = "100% Free"
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.1"
     }
   }
 }
 
 # Variables
 variable "aws_region" {
-  description = "AWS region"
-  default     = "us-east-1"  # Free tier benefits are best in us-east-1
-}
-
-variable "environment" {
-  description = "Environment name"
-  default     = "production"
+  description = "AWS region for deployment"
+  type        = string
+  default     = "ap-south-1"
 }
 
 variable "project_name" {
-  description = "Project name"
-  default     = "musicmart"
+  description = "Name of the project"
+  type        = string
+  default     = "legato"
+}
+
+variable "environment" {
+  description = "Environment (dev, staging, prod)"
+  type        = string
+  default     = "prod"
+}
+
+variable "instance_type" {
+  description = "EC2 instance type"
+  type        = string
+  default     = "t2.micro"
+}
+
+variable "key_name" {
+  description = "AWS Key Pair name"
+  type        = string
+  default     = "legato-key"
+}
+
+# Configure AWS Provider
+provider "aws" {
+  region = var.aws_region
 }
 
 # Data sources
@@ -47,44 +53,83 @@ data "aws_availability_zones" "available" {
   state = "available"
 }
 
-data "aws_caller_identity" "current" {}
+data "aws_ami" "amazon_linux" {
+  most_recent = true
+  owners      = ["amazon"]
 
-# VPC - Free
+  filter {
+    name   = "name"
+    values = ["amzn2-ami-hvm-*-x86_64-gp2"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
+
+# Random suffix for unique resource names
+resource "random_string" "suffix" {
+  length  = 8
+  special = false
+  upper   = false
+}
+
+# VPC
 resource "aws_vpc" "main" {
   cidr_block           = "10.0.0.0/16"
   enable_dns_hostnames = true
   enable_dns_support   = true
 
   tags = {
-    Name = "${var.project_name}-vpc"
+    Name        = "${var.project_name}-vpc-${random_string.suffix.result}"
+    Project     = var.project_name
+    Environment = var.environment
+    CostCenter  = "free-tier"
   }
 }
 
-# Internet Gateway - Free
+# Internet Gateway
 resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
 
   tags = {
-    Name = "${var.project_name}-igw"
+    Name        = "${var.project_name}-igw-${random_string.suffix.result}"
+    Project     = var.project_name
+    Environment = var.environment
   }
 }
 
-# Public Subnets Only (No NAT Gateway needed) - Free
+# Public Subnet
 resource "aws_subnet" "public" {
-  count = 2
-  
   vpc_id                  = aws_vpc.main.id
-  cidr_block              = "10.0.${count.index + 1}.0/24"
-  availability_zone       = data.aws_availability_zones.available.names[count.index]
+  cidr_block              = "10.0.1.0/24"
+  availability_zone       = data.aws_availability_zones.available.names[0]
   map_public_ip_on_launch = true
 
   tags = {
-    Name = "${var.project_name}-public-subnet-${count.index + 1}"
-    Type = "Public"
+    Name        = "${var.project_name}-public-subnet-${random_string.suffix.result}"
+    Project     = var.project_name
+    Environment = var.environment
+    Type        = "public"
   }
 }
 
-# Route Table - Free
+# Private Subnet
+resource "aws_subnet" "private" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.2.0/24"
+  availability_zone = data.aws_availability_zones.available.names[1]
+
+  tags = {
+    Name        = "${var.project_name}-private-subnet-${random_string.suffix.result}"
+    Project     = var.project_name
+    Environment = var.environment
+    Type        = "private"
+  }
+}
+
+# Route Table for Public Subnet
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
 
@@ -94,23 +139,25 @@ resource "aws_route_table" "public" {
   }
 
   tags = {
-    Name = "${var.project_name}-public-rt"
+    Name        = "${var.project_name}-public-rt-${random_string.suffix.result}"
+    Project     = var.project_name
+    Environment = var.environment
   }
 }
 
-# Route Table Associations - Free
+# Route Table Association for Public Subnet
 resource "aws_route_table_association" "public" {
-  count = length(aws_subnet.public)
-  
-  subnet_id      = aws_subnet.public[count.index].id
+  subnet_id      = aws_subnet.public.id
   route_table_id = aws_route_table.public.id
 }
 
-# Security Groups - Free
-resource "aws_security_group" "web" {
-  name_prefix = "${var.project_name}-web-"
+# Security Group for Application
+resource "aws_security_group" "app" {
+  name_prefix = "${var.project_name}-app-"
   vpc_id      = aws_vpc.main.id
+  description = "Security group for ${var.project_name} application"
 
+  # HTTP access
   ingress {
     description = "HTTP"
     from_port   = 80
@@ -119,6 +166,7 @@ resource "aws_security_group" "web" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  # HTTPS access
   ingress {
     description = "HTTPS"
     from_port   = 443
@@ -127,30 +175,25 @@ resource "aws_security_group" "web" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  ingress {
-    description = "App Port"
-    from_port   = 3000
-    to_port     = 3000
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
+  # SSH access
   ingress {
     description = "SSH"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]  # Restrict this to your IP in production
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
+  # Application port
   ingress {
-    description = "PostgreSQL"
-    from_port   = 5432
-    to_port     = 5432
+    description = "App Port"
+    from_port   = 3000
+    to_port     = 3000
     protocol    = "tcp"
-    cidr_blocks = ["10.0.0.0/16"]  # Only from VPC
+    cidr_blocks = ["10.0.0.0/16"]
   }
 
+  # All outbound traffic
   egress {
     from_port   = 0
     to_port     = 0
@@ -159,52 +202,25 @@ resource "aws_security_group" "web" {
   }
 
   tags = {
-    Name = "${var.project_name}-web-sg"
+    Name        = "${var.project_name}-app-sg-${random_string.suffix.result}"
+    Project     = var.project_name
+    Environment = var.environment
   }
 }
 
-# Free Tier EC2 Instance for Application + Database
-resource "aws_instance" "app" {
-  ami           = "ami-0c02fb55956c7d316"  # Amazon Linux 2 AMI (Free Tier eligible)
-  instance_type = "t2.micro"               # Free Tier eligible
-  key_name      = aws_key_pair.main.key_name
-  
-  vpc_security_group_ids = [aws_security_group.web.id]
-  subnet_id              = aws_subnet.public[0].id
-  
-  iam_instance_profile = aws_iam_instance_profile.app.name
-  
-  user_data = base64encode(templatefile("${path.module}/app-userdata.sh", {
-    aws_region = var.aws_region
-    s3_bucket = aws_s3_bucket.assets.bucket
-  }))
-
-  root_block_device {
-    volume_type = "gp2"
-    volume_size = 30  # Free Tier allows up to 30GB
-    encrypted   = true
-  }
-
-  tags = {
-    Name = "${var.project_name}-app"
-  }
-}
-
-# SSH Key Pair - Free
-resource "aws_key_pair" "main" {
-  key_name   = "${var.project_name}-key"
-  public_key = file("~/.ssh/id_rsa.pub")
-}
-
-# S3 Bucket for Assets - Free Tier (5GB)
+# S3 Bucket for Assets
 resource "aws_s3_bucket" "assets" {
-  bucket = "${var.project_name}-assets-${random_string.bucket_suffix.result}"
+  bucket = "${var.project_name}-assets-${random_string.suffix.result}"
 
   tags = {
-    Name = "${var.project_name}-assets"
+    Name        = "${var.project_name}-assets-${random_string.suffix.result}"
+    Project     = var.project_name
+    Environment = var.environment
+    Purpose     = "static-assets"
   }
 }
 
+# S3 Bucket Versioning
 resource "aws_s3_bucket_versioning" "assets" {
   bucket = aws_s3_bucket.assets.id
   versioning_configuration {
@@ -212,6 +228,7 @@ resource "aws_s3_bucket_versioning" "assets" {
   }
 }
 
+# S3 Bucket Server Side Encryption
 resource "aws_s3_bucket_server_side_encryption_configuration" "assets" {
   bucket = aws_s3_bucket.assets.id
 
@@ -222,6 +239,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "assets" {
   }
 }
 
+# S3 Bucket Public Access Block
 resource "aws_s3_bucket_public_access_block" "assets" {
   bucket = aws_s3_bucket.assets.id
 
@@ -231,6 +249,7 @@ resource "aws_s3_bucket_public_access_block" "assets" {
   restrict_public_buckets = false
 }
 
+# S3 Bucket Policy for Public Read
 resource "aws_s3_bucket_policy" "assets" {
   bucket = aws_s3_bucket.assets.id
 
@@ -243,14 +262,16 @@ resource "aws_s3_bucket_policy" "assets" {
         Principal = "*"
         Action    = "s3:GetObject"
         Resource  = "${aws_s3_bucket.assets.arn}/*"
-      },
+      }
     ]
   })
+
+  depends_on = [aws_s3_bucket_public_access_block.assets]
 }
 
-# IAM Role for EC2 - Free
-resource "aws_iam_role" "app" {
-  name = "${var.project_name}-app-role"
+# IAM Role for EC2 Instance
+resource "aws_iam_role" "app_role" {
+  name = "${var.project_name}-app-role-${random_string.suffix.result}"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -266,13 +287,16 @@ resource "aws_iam_role" "app" {
   })
 
   tags = {
-    Name = "${var.project_name}-app-role"
+    Name        = "${var.project_name}-app-role-${random_string.suffix.result}"
+    Project     = var.project_name
+    Environment = var.environment
   }
 }
 
-resource "aws_iam_policy" "app_policy" {
-  name        = "${var.project_name}-app-policy"
-  description = "Policy for application server"
+# IAM Policy for S3 Access
+resource "aws_iam_role_policy" "app_s3_policy" {
+  name = "${var.project_name}-s3-policy"
+  role = aws_iam_role.app_role.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -294,44 +318,119 @@ resource "aws_iam_policy" "app_policy" {
   })
 }
 
-resource "aws_iam_role_policy_attachment" "app_policy" {
-  role       = aws_iam_role.app.name
-  policy_arn = aws_iam_policy.app_policy.arn
+# IAM Instance Profile
+resource "aws_iam_instance_profile" "app_profile" {
+  name = "${var.project_name}-app-profile-${random_string.suffix.result}"
+  role = aws_iam_role.app_role.name
+
+  tags = {
+    Name        = "${var.project_name}-app-profile-${random_string.suffix.result}"
+    Project     = var.project_name
+    Environment = var.environment
+  }
 }
 
-resource "aws_iam_instance_profile" "app" {
-  name = "${var.project_name}-app-profile"
-  role = aws_iam_role.app.name
+# Application EC2 Instance
+resource "aws_instance" "app" {
+  ami                    = data.aws_ami.amazon_linux.id
+  instance_type          = var.instance_type
+  key_name               = var.key_name
+  vpc_security_group_ids = [aws_security_group.app.id]
+  subnet_id              = aws_subnet.public.id
+  iam_instance_profile   = aws_iam_instance_profile.app_profile.name
+
+  user_data = base64encode(templatefile("${path.module}/app-userdata.sh", {
+    aws_region    = var.aws_region
+    s3_bucket     = aws_s3_bucket.assets.bucket
+    project_name  = var.project_name
+    environment   = var.environment
+  }))
+
+  root_block_device {
+    volume_type = "gp2"
+    volume_size = 20
+    encrypted   = true
+
+    tags = {
+      Name        = "${var.project_name}-app-root-volume"
+      Project     = var.project_name
+      Environment = var.environment
+    }
+  }
+
+  tags = {
+    Name        = "${var.project_name}-app-${random_string.suffix.result}"
+    Project     = var.project_name
+    Environment = var.environment
+    Type        = "application-server"
+    CostCenter  = "free-tier"
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
-# Random string for unique bucket name
-resource "random_string" "bucket_suffix" {
-  length  = 8
-  special = false
-  upper   = false
+# Elastic IP for Application Server
+resource "aws_eip" "app" {
+  instance = aws_instance.app.id
+  domain   = "vpc"
+
+  tags = {
+    Name        = "${var.project_name}-app-eip-${random_string.suffix.result}"
+    Project     = var.project_name
+    Environment = var.environment
+  }
+
+  depends_on = [aws_internet_gateway.main]
 }
 
 # Outputs
 output "application_url" {
-  description = "URL of the application"
-  value       = "http://${aws_instance.app.public_ip}:3000"
+  description = "URL of the deployed application"
+  value       = "http://${aws_eip.app.public_ip}"
+}
+
+output "application_ip" {
+  description = "Public IP of the application server"
+  value       = aws_eip.app.public_ip
 }
 
 output "ssh_command" {
-  description = "SSH command to connect to the server"
-  value       = "ssh -i ~/.ssh/id_rsa ec2-user@${aws_instance.app.public_ip}"
+  description = "SSH command to connect to the application server"
+  value       = "ssh -i ~/.ssh/${var.key_name}.pem ec2-user@${aws_eip.app.public_ip}"
 }
 
 output "s3_bucket_name" {
-  description = "Name of the S3 bucket"
+  description = "Name of the S3 bucket for assets"
   value       = aws_s3_bucket.assets.bucket
 }
 
-output "admin_credentials" {
-  description = "Admin credentials for the application"
+output "s3_bucket_url" {
+  description = "URL of the S3 bucket"
+  value       = "https://${aws_s3_bucket.assets.bucket}.s3.${var.aws_region}.amazonaws.com"
+}
+
+output "database_connection" {
+  description = "Database connection details"
+  value       = "postgresql://legato_user:legato_secure_2024!@localhost:5432/legato_db"
+  sensitive   = true
+}
+
+output "health_check_url" {
+  description = "Health check endpoint"
+  value       = "http://${aws_eip.app.public_ip}/api/health"
+}
+
+output "deployment_summary" {
+  description = "Deployment summary"
   value = {
-    email    = "admin@musicmart.com"
-    password = "MusicMart2024!Admin"
+    project_name     = var.project_name
+    environment      = var.environment
+    region          = var.aws_region
+    instance_type   = var.instance_type
+    application_url = "http://${aws_eip.app.public_ip}"
+    s3_bucket      = aws_s3_bucket.assets.bucket
+    monthly_cost   = "$0.00 (AWS Free Tier)"
   }
-  sensitive = true
 }

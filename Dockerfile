@@ -1,4 +1,4 @@
-# Multi-stage Dockerfile for MusicMart E-commerce Platform
+# Multi-stage build for MusicMart E-commerce Platform
 # Optimized for production deployment
 
 # Stage 1: Dependencies
@@ -19,7 +19,8 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 # Set environment variables for build
-ENV NEXT_TELEMETRY_DISABLED 1
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
 
 # Build the application
 RUN npm run build
@@ -33,9 +34,9 @@ RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
 # Set environment variables
-ENV NODE_ENV production
-ENV NEXT_TELEMETRY_DISABLED 1
-ENV PORT 3000
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
 
 # Copy built application
 COPY --from=builder /app/public ./public
