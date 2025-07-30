@@ -3,6 +3,9 @@ const nextConfig = {
   // Enable standalone output for Docker deployment
   output: 'standalone',
   
+  // Disable telemetry for privacy
+  telemetry: false,
+  
   // Optimize for production
   poweredByHeader: false,
   compress: true,
@@ -107,6 +110,10 @@ const nextConfig = {
             key: 'Cache-Control',
             value: 'public, max-age=31536000, immutable',
           },
+          {
+            key: 'X-XSS-Protection',
+            value: '1; mode=block',
+          },
         ],
       },
       {
@@ -171,6 +178,18 @@ const nextConfig = {
       fullUrl: true,
     },
   },
+
+  // Generate ETags
+  generateEtags: true,
+  
+  // Page extensions
+  pageExtensions: ['ts', 'tsx', 'js', 'jsx'],
+  
+  // Trailing slash
+  trailingSlash: false,
+  
+  // Asset prefix for CDN
+  // assetPrefix: process.env.NODE_ENV === 'production' ? 'https://your-cdn.com' : '',
 }
 
 export default nextConfig
