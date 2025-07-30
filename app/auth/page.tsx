@@ -9,12 +9,15 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
-import { Eye, EyeOff, Github, Mail } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Eye, EyeOff, Github, Mail, Music, Shield } from "lucide-react"
 import Link from "next/link"
 
 export default function AuthPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [userType, setUserType] = useState("buyer")
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -23,34 +26,47 @@ export default function AuthPage() {
     setTimeout(() => setIsLoading(false), 2000)
   }
 
+  const handleAdminLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsLoading(true)
+    // Simulate admin login
+    setTimeout(() => {
+      setIsLoading(false)
+      // Redirect to admin dashboard
+      window.location.href = "/admin"
+    }, 2000)
+  }
+
   return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* Header */}
         <div className="text-center mb-8">
-          <Link href="/" className="text-3xl font-bold text-white mb-2 block">
-            CloudMart
+          <Link href="/" className="text-3xl font-bold text-white mb-2 block flex items-center justify-center">
+            <Music className="h-8 w-8 mr-2 text-blue-400" />
+            MusicMart
           </Link>
-          <p className="text-gray-400">Welcome to the future of e-commerce</p>
+          <p className="text-gray-400">Join the musician community</p>
         </div>
 
         <Card className="bg-gray-800/50 border-gray-700">
           <Tabs defaultValue="signin" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 bg-gray-700">
+            <TabsList className="grid w-full grid-cols-3 bg-gray-700">
               <TabsTrigger value="signin" className="data-[state=active]:bg-gray-600">
                 Sign In
               </TabsTrigger>
               <TabsTrigger value="signup" className="data-[state=active]:bg-gray-600">
                 Sign Up
               </TabsTrigger>
+              <TabsTrigger value="admin" className="data-[state=active]:bg-gray-600">
+                Admin
+              </TabsTrigger>
             </TabsList>
 
             <TabsContent value="signin">
               <CardHeader>
-                <CardTitle className="text-white">Sign In</CardTitle>
-                <CardDescription className="text-gray-400">
-                  Enter your credentials to access your account
-                </CardDescription>
+                <CardTitle className="text-white">Welcome Back</CardTitle>
+                <CardDescription className="text-gray-400">Sign in to your MusicMart account</CardDescription>
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleSubmit} className="space-y-4">
@@ -61,7 +77,7 @@ export default function AuthPage() {
                     <Input
                       id="email"
                       type="email"
-                      placeholder="john@example.com"
+                      placeholder="musician@example.com"
                       className="bg-gray-700 border-gray-600 text-white placeholder-gray-400"
                       required
                     />
@@ -91,7 +107,7 @@ export default function AuthPage() {
                   </div>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2">
-                      <input type="checkbox" id="remember" className="rounded border-gray-600 bg-gray-700" />
+                      <Checkbox id="remember" />
                       <Label htmlFor="remember" className="text-sm text-gray-300">
                         Remember me
                       </Label>
@@ -136,8 +152,10 @@ export default function AuthPage() {
 
             <TabsContent value="signup">
               <CardHeader>
-                <CardTitle className="text-white">Create Account</CardTitle>
-                <CardDescription className="text-gray-400">Join CloudMart and start shopping today</CardDescription>
+                <CardTitle className="text-white">Join MusicMart</CardTitle>
+                <CardDescription className="text-gray-400">
+                  Create your account and start trading music gear
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleSubmit} className="space-y-4">
@@ -165,6 +183,7 @@ export default function AuthPage() {
                       />
                     </div>
                   </div>
+
                   <div className="space-y-2">
                     <Label htmlFor="signupEmail" className="text-gray-300">
                       Email
@@ -172,11 +191,49 @@ export default function AuthPage() {
                     <Input
                       id="signupEmail"
                       type="email"
-                      placeholder="john@example.com"
+                      placeholder="musician@example.com"
                       className="bg-gray-700 border-gray-600 text-white placeholder-gray-400"
                       required
                     />
                   </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="userType" className="text-gray-300">
+                      I want to
+                    </Label>
+                    <Select value={userType} onValueChange={setUserType}>
+                      <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-gray-800 border-gray-700">
+                        <SelectItem value="buyer">Buy music gear</SelectItem>
+                        <SelectItem value="seller">Sell music gear</SelectItem>
+                        <SelectItem value="both">Both buy and sell</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="instrument" className="text-gray-300">
+                      Primary Instrument (Optional)
+                    </Label>
+                    <Select>
+                      <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
+                        <SelectValue placeholder="Select your main instrument" />
+                      </SelectTrigger>
+                      <SelectContent className="bg-gray-800 border-gray-700">
+                        <SelectItem value="guitar">Guitar</SelectItem>
+                        <SelectItem value="bass">Bass</SelectItem>
+                        <SelectItem value="drums">Drums</SelectItem>
+                        <SelectItem value="keyboard">Keyboard/Piano</SelectItem>
+                        <SelectItem value="vocals">Vocals</SelectItem>
+                        <SelectItem value="brass">Brass</SelectItem>
+                        <SelectItem value="strings">Strings</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
                   <div className="space-y-2">
                     <Label htmlFor="signupPassword" className="text-gray-300">
                       Password
@@ -200,8 +257,9 @@ export default function AuthPage() {
                       </Button>
                     </div>
                   </div>
+
                   <div className="flex items-center space-x-2">
-                    <input type="checkbox" id="terms" className="rounded border-gray-600 bg-gray-700" required />
+                    <Checkbox id="terms" required />
                     <Label htmlFor="terms" className="text-sm text-gray-300">
                       I agree to the{" "}
                       <Link href="#" className="text-blue-400 hover:text-blue-300">
@@ -213,6 +271,14 @@ export default function AuthPage() {
                       </Link>
                     </Label>
                   </div>
+
+                  <div className="flex items-center space-x-2">
+                    <Checkbox id="newsletter" />
+                    <Label htmlFor="newsletter" className="text-sm text-gray-300">
+                      Send me updates about new gear and deals
+                    </Label>
+                  </div>
+
                   <Button
                     type="submit"
                     className="w-full bg-blue-600 hover:bg-blue-700 text-white"
@@ -246,11 +312,76 @@ export default function AuthPage() {
                 </div>
               </CardContent>
             </TabsContent>
+
+            <TabsContent value="admin">
+              <CardHeader>
+                <CardTitle className="text-white flex items-center">
+                  <Shield className="h-5 w-5 mr-2 text-red-400" />
+                  Admin Access
+                </CardTitle>
+                <CardDescription className="text-gray-400">Restricted access for administrators only</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleAdminLogin} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="adminEmail" className="text-gray-300">
+                      Admin Email
+                    </Label>
+                    <Input
+                      id="adminEmail"
+                      type="email"
+                      placeholder="admin@musicmart.com"
+                      className="bg-gray-700 border-gray-600 text-white placeholder-gray-400"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="adminPassword" className="text-gray-300">
+                      Admin Password
+                    </Label>
+                    <div className="relative">
+                      <Input
+                        id="adminPassword"
+                        type={showPassword ? "text" : "password"}
+                        placeholder="Enter admin password"
+                        className="bg-gray-700 border-gray-600 text-white placeholder-gray-400 pr-10"
+                        required
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-0 top-0 h-full px-3 text-gray-400 hover:text-white"
+                        onClick={() => setShowPassword(!showPassword)}
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="adminCode" className="text-gray-300">
+                      Security Code
+                    </Label>
+                    <Input
+                      id="adminCode"
+                      type="text"
+                      placeholder="Enter 6-digit security code"
+                      className="bg-gray-700 border-gray-600 text-white placeholder-gray-400"
+                      maxLength={6}
+                      required
+                    />
+                  </div>
+                  <Button type="submit" className="w-full bg-red-600 hover:bg-red-700 text-white" disabled={isLoading}>
+                    {isLoading ? "Verifying..." : "Admin Login"}
+                  </Button>
+                </form>
+              </CardContent>
+            </TabsContent>
           </Tabs>
         </Card>
 
         <div className="text-center mt-6">
-          <p className="text-sm text-gray-400">Secured by AWS infrastructure • Deployed with Docker & Jenkins</p>
+          <p className="text-sm text-gray-400">Secure authentication • Protected by industry standards</p>
         </div>
       </div>
     </div>

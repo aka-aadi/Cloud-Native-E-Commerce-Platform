@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  legato-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - NEXTAUTH_URL=${NEXTAUTH_URL}
+      - RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID}
+      - RAZORPAY_KEY_SECRET=${RAZORPAY_KEY_SECRET}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+    networks:
+      - legato-network
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=legato_db
+      - POSTGRES_USER=legato_user
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/database-schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./scripts/sample-data.sql:/docker-entrypoint-initdb.d/02-data.sql
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    networks:
+      - legato-network
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - legato-network
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./ssl:/etc/nginx/ssl
+    depends_on:
+      - legato-app
+    restart: unless-stopped
+    networks:
+      - legato-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  legato-network:
+    driver: bridge
