@@ -1,971 +1,376 @@
 #!/bin/bash
 
-# Zero-Cost E-commerce Platform Setup Script
-# Uses only AWS Free Tier resources - $0.00/month
+# Zero Cost E-commerce Platform Setup Script
+# Optimized for AWS Free Tier t2.micro instance
+
 set -e
 
-# Configuration variables from Terraform
-AWS_REGION="${aws_region}"
-S3_BUCKET="${s3_bucket}"
+# Configuration
 PROJECT_NAME="${project_name}"
-ENVIRONMENT="${environment}"
-
-# Application configuration
-APP_NAME="legato-free"
-APP_DIR="/opt/$APP_NAME"
-APP_USER="ec2-user"
-
-# Logging setup
+S3_BUCKET="${s3_bucket}"
+AWS_REGION="${aws_region}"
+APP_DIR="/opt/legato"
+DATA_DIR="/opt/legato/data"
 LOG_FILE="/var/log/legato-setup.log"
-exec 1> >(tee -a $LOG_FILE)
-exec 2>&1
 
-echo "=== Zero-Cost Legato Setup Started at $(date) ==="
-echo "💰 Monthly Cost: \$0.00 (AWS Free Tier Only)"
-echo "AWS Region: $AWS_REGION"
-echo "S3 Bucket: $S3_BUCKET"
-echo "Project: $PROJECT_NAME"
-echo "Environment: $ENVIRONMENT"
+# Logging function
+log() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
+}
 
-# Update system packages
-echo "📦 Updating system packages..."
+log "🚀 Starting Zero Cost E-commerce Platform setup..."
+log "Project: $PROJECT_NAME"
+log "S3 Bucket: $S3_BUCKET"
+log "AWS Region: $AWS_REGION"
+
+# Update system
+log "📦 Updating system packages..."
 yum update -y
 
-# Install essential packages
-echo "🔧 Installing essential packages..."
-yum install -y \
-    git \
-    curl \
-    wget \
-    unzip \
-    htop \
-    nginx \
-    postgresql \
-    docker
-
-# Install Node.js 18
-echo "📦 Installing Node.js 18..."
+# Install Node.js 18 (LTS)
+log "📦 Installing Node.js 18..."
 curl -fsSL https://rpm.nodesource.com/setup_18.x | bash -
 yum install -y nodejs
 
-# Verify installations
-node_version=$(node --version)
-npm_version=$(npm --version)
-echo "✅ Node.js installed: $node_version"
-echo "✅ npm installed: $npm_version"
+# Install additional packages
+log "📦 Installing additional packages..."
+yum install -y git nginx python3 python3-pip gcc-c++ make
 
 # Install PM2 globally
-echo "📦 Installing PM2..."
+log "📦 Installing PM2 process manager..."
 npm install -g pm2
 
-# Start and enable Docker
-echo "🐳 Setting up Docker..."
-systemctl start docker
-systemctl enable docker
-usermod -a -G docker $APP_USER
-
-# Install Docker Compose
-echo "📦 Installing Docker Compose..."
-curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-chmod +x /usr/local/bin/docker-compose
-
-# Install AWS CLI v2
-echo "📦 Installing AWS CLI v2..."
-curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-unzip awscliv2.zip
-./aws/install
-rm -rf aws awscliv2.zip
-
-# Configure AWS CLI for the instance
-mkdir -p /home/$APP_USER/.aws
-cat > /home/$APP_USER/.aws/config << EOF
-[default]
-region = $AWS_REGION
-output = json
-EOF
-
-chown -R $APP_USER:$APP_USER /home/$APP_USER/.aws
-
-# Setup local SQLite database (free alternative to RDS)
-echo "🗄️ Setting up SQLite database..."
-mkdir -p $APP_DIR/data
-chown $APP_USER:$APP_USER $APP_DIR/data
-
 # Create application directory
-echo "📁 Creating application directory..."
-mkdir -p $APP_DIR
-chown $APP_USER:$APP_USER $APP_DIR
+log "📁 Creating application directories..."
+mkdir -p "$APP_DIR"
+mkdir -p "$DATA_DIR"
+mkdir -p /var/log/legato
 
-# Create environment file
-echo "📝 Creating environment configuration..."
-cat > $APP_DIR/.env << EOF
-NODE_ENV=production
-PORT=3000
-AWS_REGION=$AWS_REGION
-S3_BUCKET=$S3_BUCKET
+# Create legato user
+log "👤 Creating legato user..."
+useradd -r -s /bin/bash -d "$APP_DIR" legato || true
+chown -R legato:legato "$APP_DIR"
+chown -R legato:legato /var/log/legato
 
-# Database Configuration (SQLite for zero cost)
-DATABASE_URL=sqlite:$APP_DIR/data/database.sqlite
+# Clone or create application (for demo, we'll create a minimal setup)
+log "📥 Setting up application..."
+cd "$APP_DIR"
 
-# Application Configuration
-NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=$(openssl rand -base64 32)
-
-# AWS Configuration
-AWS_S3_BUCKET=$S3_BUCKET
-AWS_REGION=$AWS_REGION
-EOF
-
-chown $APP_USER:$APP_USER $APP_DIR/.env
-chmod 600 $APP_DIR/.env
-
-# Create application files
-cd $APP_DIR
-
-# Create package.json
+# Create a minimal package.json for the server
 cat > package.json << 'EOF'
 {
-  "name": "legato-free-ecommerce",
+  "name": "legato-server",
   "version": "1.0.0",
-  "private": true,
+  "description": "Zero cost e-commerce platform",
+  "main": "server.js",
   "scripts": {
-    "build": "next build",
-    "start": "next start -p 3000",
-    "dev": "next dev",
-    "lint": "next lint"
+    "start": "node server.js",
+    "dev": "node server.js"
   },
   "dependencies": {
-    "next": "14.0.0",
-    "react": "^18",
-    "react-dom": "^18",
-    "sqlite3": "^5.1.6",
+    "express": "^4.18.2",
     "better-sqlite3": "^9.2.2",
-    "@types/better-sqlite3": "^7.6.8",
     "bcryptjs": "^2.4.3",
-    "@types/bcryptjs": "^2.4.4",
     "jsonwebtoken": "^9.0.2",
-    "@types/jsonwebtoken": "^9.0.3",
-    "aws-sdk": "^2.1490.0",
-    "@aws-sdk/client-s3": "^3.450.0",
-    "tailwindcss": "^3.3.0",
-    "autoprefixer": "^10",
-    "postcss": "^8"
-  },
-  "devDependencies": {
-    "typescript": "^5",
-    "@types/node": "^20",
-    "@types/react": "^18",
-    "@types/react-dom": "^18",
-    "eslint": "^8",
-    "eslint-config-next": "14.0.0"
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "compression": "^1.7.4"
   }
 }
 EOF
 
-# Create Dockerfile for local development
-cat > Dockerfile << 'EOF'
-FROM node:18-alpine AS deps
-RUN apk add --no-cache libc6-compat python3 make g++
-WORKDIR /app
+# Install server dependencies
+log "📦 Installing server dependencies..."
+npm install
 
-COPY package.json package-lock.json* ./
-RUN npm ci --only=production
+# Create a simple Express server
+cat > server.js << 'EOF'
+const express = require('express');
+const path = require('path');
+const fs = require('fs');
+const Database = require('better-sqlite3');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const cors = require('cors');
+const helmet = require('helmet');
+const compression = require('compression');
 
-FROM node:18-alpine AS builder
-WORKDIR /app
+const app = express();
+const PORT = process.env.PORT || 3000;
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+// Middleware
+app.use(helmet());
+app.use(compression());
+app.use(cors());
+app.use(express.json());
+app.use(express.static('public'));
 
-ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
+// Database setup
+const dbPath = '/opt/legato/data/legato.db';
+const db = new Database(dbPath);
 
-RUN npm run build
+// Initialize database
+function initDatabase() {
+  console.log('🗄️ Initializing SQLite database...');
+  
+  // Create tables
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      name TEXT NOT NULL,
+      role TEXT DEFAULT 'user',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
 
-FROM node:18-alpine AS runner
-WORKDIR /app
+    CREATE TABLE IF NOT EXISTS categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE NOT NULL,
+      description TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
 
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+    CREATE TABLE IF NOT EXISTS products (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      description TEXT,
+      price DECIMAL(10,2) NOT NULL,
+      category_id INTEGER,
+      image_url TEXT,
+      status TEXT DEFAULT 'approved',
+      stock_quantity INTEGER DEFAULT 0,
+      featured BOOLEAN DEFAULT FALSE,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (category_id) REFERENCES categories(id)
+    );
+  `);
 
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/data ./data
-
-RUN chown -R nextjs:nodejs /app
-USER nextjs
-
-EXPOSE 3000
-
-ENV PORT=3000
-ENV NODE_ENV=production
-
-CMD ["node", "server.js"]
-EOF
-
-# Create Next.js configuration
-cat > next.config.mjs << 'EOF'
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  experimental: {
-    appDir: true,
-  },
-  output: 'standalone',
-  images: {
-    domains: ['localhost'],
-  },
-}
-
-export default nextConfig
-EOF
-
-# Create basic application structure
-mkdir -p app/api/{health,products,init-db}
-mkdir -p lib
-mkdir -p public
-
-# Create database connection utility (SQLite)
-cat > lib/db.ts << 'EOF'
-import Database from 'better-sqlite3'
-import path from 'path'
-
-const dbPath = process.env.NODE_ENV === 'production' 
-  ? '/opt/legato-free/data/database.sqlite'
-  : path.join(process.cwd(), 'data', 'database.sqlite')
-
-let db: Database.Database
-
-try {
-  db = new Database(dbPath)
-  db.pragma('journal_mode = WAL')
-  console.log('✅ SQLite database connected')
-} catch (error) {
-  console.error('❌ SQLite connection failed:', error)
-  throw error
-}
-
-export default db
-EOF
-
-# Create health check API
-cat > app/api/health/route.ts << 'EOF'
-import { NextResponse } from 'next/server'
-import db from '@/lib/db'
-
-export async function GET() {
-  try {
-    // Test database connection
-    const result = db.prepare('SELECT datetime("now") as now').get()
+  // Insert sample data
+  const categoryCount = db.prepare('SELECT COUNT(*) as count FROM categories').get().count;
+  if (categoryCount === 0) {
+    console.log('🌱 Seeding database with sample data...');
     
-    return NextResponse.json({
-      status: 'healthy',
-      timestamp: new Date().toISOString(),
-      database: 'connected',
-      uptime: process.uptime(),
-      version: '1.0.0',
-      environment: process.env.NODE_ENV,
-      cost: '$0.00/month (AWS Free Tier)',
-      database_type: 'SQLite'
-    })
-  } catch (error) {
-    return NextResponse.json({
-      status: 'unhealthy',
-      timestamp: new Date().toISOString(),
-      database: 'disconnected',
-      error: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 })
-  }
-}
-EOF
-
-# Create database initialization API
-cat > app/api/init-db/route.ts << 'EOF'
-import { NextResponse } from 'next/server'
-import db from '@/lib/db'
-
-export async function POST() {
-  try {
-    // Create products table
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS products (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        description TEXT,
-        price REAL NOT NULL,
-        category TEXT,
-        image_url TEXT,
-        stock_quantity INTEGER DEFAULT 0,
-        featured BOOLEAN DEFAULT 0,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `)
+    // Insert categories
+    const insertCategory = db.prepare('INSERT INTO categories (name, description) VALUES (?, ?)');
+    insertCategory.run('Guitars', 'Acoustic and electric guitars');
+    insertCategory.run('Keyboards', 'Pianos and keyboards');
+    insertCategory.run('Drums', 'Drum sets and percussion');
     
-    // Create categories table
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS categories (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL UNIQUE,
-        description TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `)
-    
-    // Create orders table
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS orders (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_email TEXT NOT NULL,
-        total_amount REAL NOT NULL,
-        status TEXT DEFAULT 'pending',
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `)
-    
-    // Create order_items table
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS order_items (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        order_id INTEGER,
-        product_id INTEGER,
-        quantity INTEGER NOT NULL,
-        price REAL NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (order_id) REFERENCES orders (id),
-        FOREIGN KEY (product_id) REFERENCES products (id)
-      )
-    `)
-    
-    // Insert sample categories
-    const insertCategory = db.prepare(`
-      INSERT OR IGNORE INTO categories (name, description) VALUES (?, ?)
-    `)
-    
-    insertCategory.run('Guitars', 'Electric and acoustic guitars')
-    insertCategory.run('Keyboards', 'Digital pianos and synthesizers')
-    insertCategory.run('Drums', 'Drum sets and percussion instruments')
-    insertCategory.run('Audio', 'Recording and sound equipment')
+    // Insert admin user
+    const adminPassword = bcrypt.hashSync('admin123', 10);
+    const insertUser = db.prepare('INSERT INTO users (email, password_hash, name, role) VALUES (?, ?, ?, ?)');
+    insertUser.run('admin@legato.com', adminPassword, 'Admin User', 'admin');
     
     // Insert sample products
-    const insertProduct = db.prepare(`
-      INSERT OR IGNORE INTO products (name, description, price, category, image_url, stock_quantity, featured) 
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `)
+    const insertProduct = db.prepare('INSERT INTO products (name, description, price, category_id, featured, stock_quantity) VALUES (?, ?, ?, ?, ?, ?)');
+    insertProduct.run('Acoustic Guitar Starter Pack', 'Perfect for beginners', 299.99, 1, true, 15);
+    insertProduct.run('Electric Guitar Pro', 'Professional electric guitar', 599.99, 1, true, 8);
+    insertProduct.run('Digital Piano 88-Key', 'Full-size weighted keys', 899.99, 2, true, 5);
+    insertProduct.run('Professional Drum Set', '5-piece drum set', 1299.99, 3, false, 3);
     
-    insertProduct.run('Electric Guitar Pro', 'Professional electric guitar with premium pickups', 899.99, 'Guitars', '/placeholder.svg?height=300&width=300&text=Electric+Guitar', 15, 1)
-    insertProduct.run('Digital Piano 88', '88-key weighted digital piano', 1299.99, 'Keyboards', '/placeholder.svg?height=300&width=300&text=Digital+Piano', 8, 1)
-    insertProduct.run('Drum Set Complete', '5-piece acoustic drum set', 799.99, 'Drums', '/placeholder.svg?height=300&width=300&text=Drum+Set', 5, 0)
-    insertProduct.run('Studio Microphone', 'Professional condenser microphone', 299.99, 'Audio', '/placeholder.svg?height=300&width=300&text=Microphone', 20, 1)
-    insertProduct.run('Bass Guitar', '4-string electric bass guitar', 649.99, 'Guitars', '/placeholder.svg?height=300&width=300&text=Bass+Guitar', 12, 0)
-    insertProduct.run('Synthesizer', 'Analog modeling synthesizer', 1599.99, 'Keyboards', '/placeholder.svg?height=300&width=300&text=Synthesizer', 6, 1)
-    
-    return NextResponse.json({
-      success: true,
-      message: 'SQLite database initialized successfully - Zero Cost!',
-      timestamp: new Date().toISOString(),
-      database_type: 'SQLite',
-      cost: '$0.00/month'
-    })
-  } catch (error) {
-    return NextResponse.json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 })
+    console.log('✅ Database seeded successfully');
   }
 }
-EOF
 
-# Create products API
-cat > app/api/products/route.ts << 'EOF'
-import { NextResponse } from 'next/server'
-import db from '@/lib/db'
+// Routes
+app.get('/', (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Legato - Zero Cost E-commerce Platform</title>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .header { text-align: center; margin-bottom: 30px; }
+        .logo { font-size: 2.5em; color: #2563eb; margin-bottom: 10px; }
+        .tagline { color: #666; font-size: 1.2em; }
+        .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin: 30px 0; }
+        .feature { padding: 20px; border: 1px solid #ddd; border-radius: 8px; }
+        .feature h3 { color: #2563eb; margin-top: 0; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin: 30px 0; }
+        .stat { text-align: center; padding: 20px; background: #f8fafc; border-radius: 8px; }
+        .stat-number { font-size: 2em; font-weight: bold; color: #2563eb; }
+        .cost-banner { background: linear-gradient(135deg, #10b981, #059669); color: white; padding: 20px; border-radius: 8px; text-align: center; margin: 20px 0; }
+        .api-links { margin: 30px 0; }
+        .api-links a { display: inline-block; margin: 5px 10px; padding: 10px 15px; background: #2563eb; color: white; text-decoration: none; border-radius: 5px; }
+        .api-links a:hover { background: #1d4ed8; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <div class="logo">🎵 Legato</div>
+          <div class="tagline">Zero Cost E-commerce Platform on AWS Free Tier</div>
+        </div>
+        
+        <div class="cost-banner">
+          <h2>💰 Monthly Cost: $0.00</h2>
+          <p>Running entirely on AWS Free Tier resources!</p>
+        </div>
+        
+        <div class="features">
+          <div class="feature">
+            <h3>🏗️ Architecture</h3>
+            <ul>
+              <li>EC2 t2.micro instance</li>
+              <li>SQLite database</li>
+              <li>S3 for static assets</li>
+              <li>Nginx reverse proxy</li>
+              <li>PM2 process manager</li>
+            </ul>
+          </div>
+          
+          <div class="feature">
+            <h3>🎯 Perfect For</h3>
+            <ul>
+              <li>Learning cloud deployment</li>
+              <li>Portfolio projects</li>
+              <li>MVP testing</li>
+              <li>E-commerce experimentation</li>
+            </ul>
+          </div>
+          
+          <div class="feature">
+            <h3>🚀 Features</h3>
+            <ul>
+              <li>Product catalog</li>
+              <li>User authentication</li>
+              <li>Admin dashboard</li>
+              <li>RESTful API</li>
+              <li>Responsive design</li>
+            </ul>
+          </div>
+        </div>
+        
+        <div class="api-links">
+          <h3>🔗 API Endpoints</h3>
+          <a href="/api/health">Health Check</a>
+          <a href="/api/products">Products</a>
+          <a href="/api/categories">Categories</a>
+          <a href="/api/stats">Statistics</a>
+        </div>
+        
+        <div class="stats">
+          <div class="stat">
+            <div class="stat-number" id="products-count">-</div>
+            <div>Products</div>
+          </div>
+          <div class="stat">
+            <div class="stat-number" id="categories-count">-</div>
+            <div>Categories</div>
+          </div>
+          <div class="stat">
+            <div class="stat-number" id="users-count">-</div>
+            <div>Users</div>
+          </div>
+        </div>
+      </div>
+      
+      <script>
+        // Load stats
+        fetch('/api/stats')
+          .then(res => res.json())
+          .then(data => {
+            document.getElementById('products-count').textContent = data.totalProducts || 0;
+            document.getElementById('categories-count').textContent = data.totalCategories || 0;
+            document.getElementById('users-count').textContent = data.totalUsers || 0;
+          })
+          .catch(err => console.error('Failed to load stats:', err));
+      </script>
+    </body>
+    </html>
+  `);
+});
 
-export async function GET() {
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    database: 'connected',
+    cost: '$0.00/month'
+  });
+});
+
+app.get('/api/products', (req, res) => {
   try {
     const products = db.prepare(`
-      SELECT * FROM products 
-      ORDER BY featured DESC, created_at DESC
-    `).all()
-    
-    return NextResponse.json({
-      products: products,
-      count: products.length
-    })
+      SELECT p.*, c.name as category_name 
+      FROM products p 
+      LEFT JOIN categories c ON p.category_id = c.id 
+      ORDER BY p.created_at DESC
+    `).all();
+    res.json(products);
   } catch (error) {
-    return NextResponse.json({
-      error: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 })
+    res.status(500).json({ error: error.message });
   }
-}
+});
 
-export async function POST(request: Request) {
+app.get('/api/categories', (req, res) => {
   try {
-    const body = await request.json()
-    const { name, description, price, category, image_url, stock_quantity, featured } = body
-    
-    const insert = db.prepare(`
-      INSERT INTO products (name, description, price, category, image_url, stock_quantity, featured)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `)
-    
-    const result = insert.run(name, description, price, category, image_url, stock_quantity, featured ? 1 : 0)
-    
-    const product = db.prepare('SELECT * FROM products WHERE id = ?').get(result.lastInsertRowid)
-    
-    return NextResponse.json({
-      success: true,
-      product: product
-    })
+    const categories = db.prepare('SELECT * FROM categories ORDER BY name').all();
+    res.json(categories);
   } catch (error) {
-    return NextResponse.json({
-      error: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 })
+    res.status(500).json({ error: error.message });
   }
-}
-EOF
+});
 
-# Create main application layout and pages
-mkdir -p app
-cat > app/globals.css << 'EOF'
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
-:root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
+app.get('/api/stats', (req, res) => {
+  try {
+    const totalProducts = db.prepare('SELECT COUNT(*) as count FROM products').get().count;
+    const totalCategories = db.prepare('SELECT COUNT(*) as count FROM categories').get().count;
+    const totalUsers = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
+    
+    res.json({
+      totalProducts,
+      totalCategories,
+      totalUsers,
+      cost: '$0.00/month',
+      platform: 'AWS Free Tier'
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
-}
+});
 
-body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
-}
+// Initialize database and start server
+initDatabase();
 
-.cost-badge {
-  background: linear-gradient(45deg, #10b981, #059669);
-  color: white;
-  padding: 0.5rem 1rem;
-  border-radius: 9999px;
-  font-weight: bold;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
-EOF
-
-cat > app/layout.tsx << 'EOF'
-import './globals.css'
-import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
-
-const inter = Inter({ subsets: ['latin'] })
-
-export const metadata: Metadata = {
-  title: 'Legato - Zero Cost E-commerce Platform',
-  description: 'Professional music instruments - Powered by AWS Free Tier ($0.00/month)',
-}
-
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
-  return (
-    <html lang="en">
-      <body className={inter.className}>
-        <nav className="bg-gradient-to-r from-green-600 to-blue-600 text-white p-4 shadow-lg">
-          <div className="container mx-auto flex justify-between items-center">
-            <div>
-              <h1 className="text-3xl font-bold">🎵 Legato</h1>
-              <p className="text-green-100">Zero Cost E-commerce Platform</p>
-            </div>
-            <div className="cost-badge">
-              💰 $0.00/month
-            </div>
-          </div>
-        </nav>
-        {children}
-        <footer className="bg-gray-800 text-white p-8 mt-12">
-          <div className="container mx-auto text-center">
-            <p>&copy; 2024 Legato. Powered by AWS Free Tier - Zero Cost!</p>
-            <p className="text-sm text-gray-400 mt-2">
-              EC2 t2.micro • SQLite Database • S3 Storage • 100% Free Tier
-            </p>
-            <div className="mt-4 text-green-400 font-bold">
-              🎉 Monthly Cost: $0.00 - Perfect for Testing & Learning!
-            </div>
-          </div>
-        </footer>
-      </body>
-    </html>
-  )
-}
-EOF
-
-cat > app/page.tsx << 'EOF'
-'use client'
-
-import { useState, useEffect } from 'react'
-
-interface Product {
-  id: number
-  name: string
-  description: string
-  price: number
-  category: string
-  image_url: string
-  stock_quantity: number
-  featured: boolean
-}
-
-export default function Home() {
-  const [products, setProducts] = useState<Product[]>([])
-  const [loading, setLoading] = useState(true)
-  const [dbInitialized, setDbInitialized] = useState(false)
-  const [healthStatus, setHealthStatus] = useState<any>(null)
-
-  useEffect(() => {
-    fetchProducts()
-    fetchHealthStatus()
-  }, [])
-
-  const fetchProducts = async () => {
-    try {
-      const response = await fetch('/api/products')
-      const data = await response.json()
-      if (data.products) {
-        setProducts(data.products)
-        setDbInitialized(true)
-      }
-    } catch (error) {
-      console.error('Error fetching products:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const fetchHealthStatus = async () => {
-    try {
-      const response = await fetch('/api/health')
-      const data = await response.json()
-      setHealthStatus(data)
-    } catch (error) {
-      console.error('Error fetching health status:', error)
-    }
-  }
-
-  const initializeDatabase = async () => {
-    try {
-      setLoading(true)
-      const response = await fetch('/api/init-db', { method: 'POST' })
-      const data = await response.json()
-      if (data.success) {
-        await fetchProducts()
-        setDbInitialized(true)
-      }
-    } catch (error) {
-      console.error('Error initializing database:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  if (loading) {
-    return (
-      <main className="container mx-auto p-8">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-green-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading zero-cost e-commerce platform...</p>
-        </div>
-      </main>
-    )
-  }
-
-  if (!dbInitialized || products.length === 0) {
-    return (
-      <main className="container mx-auto p-8">
-        <div className="text-center">
-          <h2 className="text-5xl font-bold mb-4 bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
-            🚀 Welcome to Legato!
-          </h2>
-          <p className="text-xl text-gray-600 mb-8">Zero Cost E-commerce Platform on AWS Free Tier</p>
-          
-          <div className="bg-gradient-to-r from-green-50 to-blue-50 p-8 rounded-xl mb-8 max-w-4xl mx-auto">
-            <h3 className="text-2xl font-bold mb-6 text-green-800">💰 100% FREE AWS Infrastructure</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
-              <div className="bg-white p-4 rounded-lg shadow border-l-4 border-green-500">
-                <h4 className="font-bold text-green-700">🖥️ Compute</h4>
-                <p className="text-gray-600">EC2 t2.micro</p>
-                <p className="text-green-600 font-semibold">750 hrs/month FREE</p>
-              </div>
-              <div className="bg-white p-4 rounded-lg shadow border-l-4 border-blue-500">
-                <h4 className="font-bold text-blue-700">🗄️ Database</h4>
-                <p className="text-gray-600">SQLite Local</p>
-                <p className="text-green-600 font-semibold">100% FREE</p>
-              </div>
-              <div className="bg-white p-4 rounded-lg shadow border-l-4 border-purple-500">
-                <h4 className="font-bold text-purple-700">📦 Storage</h4>
-                <p className="text-gray-600">S3 + EBS</p>
-                <p className="text-green-600 font-semibold">5GB + 30GB FREE</p>
-              </div>
-              <div className="bg-white p-4 rounded-lg shadow border-l-4 border-orange-500">
-                <h4 className="font-bold text-orange-700">🌐 Network</h4>
-                <p className="text-gray-600">Data Transfer</p>
-                <p className="text-green-600 font-semibold">15GB/month FREE</p>
-              </div>
-            </div>
-            
-            <div className="mt-6 p-4 bg-green-100 rounded-lg">
-              <h4 className="font-bold text-green-800 text-lg">🎯 Perfect for:</h4>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2 text-sm">
-                <div className="text-green-700">✅ Learning & Testing</div>
-                <div className="text-green-700">✅ Portfolio Projects</div>
-                <div className="text-green-700">✅ MVP Development</div>
-              </div>
-            </div>
-          </div>
-
-          {healthStatus && (
-            <div className="bg-green-50 p-6 rounded-lg mb-6 max-w-md mx-auto border border-green-200">
-              <h4 className="font-semibold text-green-800 mb-3">🏥 System Status</h4>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-green-700">Database:</span>
-                  <span className="font-semibold text-green-800">{healthStatus.database_type}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-green-700">Environment:</span>
-                  <span className="font-semibold text-green-800">{healthStatus.environment}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-green-700">Uptime:</span>
-                  <span className="font-semibold text-green-800">{Math.floor(healthStatus.uptime)}s</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-green-700">Monthly Cost:</span>
-                  <span className="font-bold text-green-600">{healthStatus.cost}</span>
-                </div>
-              </div>
-            </div>
-          )}
-          
-          <button
-            onClick={initializeDatabase}
-            className="bg-gradient-to-r from-green-600 to-blue-600 text-white px-8 py-4 rounded-lg hover:from-green-700 hover:to-blue-700 transition-all transform hover:scale-105 shadow-lg text-lg font-semibold"
-          >
-            🚀 Initialize SQLite Database (FREE)
-          </button>
-          
-          <p className="mt-4 text-sm text-gray-600">
-            No RDS charges • No additional costs • Perfect for testing!
-          </p>
-        </div>
-      </main>
-    )
-  }
-
-  const featuredProducts = products.filter(p => p.featured)
-  const regularProducts = products.filter(p => !p.featured)
-
-  return (
-    <main className="container mx-auto p-8">
-      <div className="text-center mb-12">
-        <h2 className="text-5xl font-bold mb-4 bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
-          🎵 Legato Music Store
-        </h2>
-        <p className="text-xl text-gray-600 mb-6">Zero Cost E-commerce Platform</p>
-        
-        <div className="bg-gradient-to-r from-green-100 to-blue-100 p-6 rounded-xl max-w-4xl mx-auto mb-8">
-          <h3 className="text-2xl font-bold mb-4 text-gray-800">🎉 Running 100% FREE on AWS!</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-white p-4 rounded-lg shadow">
-              <div className="text-2xl mb-2">💰</div>
-              <h4 className="font-bold text-green-600">$0.00/month</h4>
-              <p className="text-sm text-gray-600">AWS Free Tier</p>
-            </div>
-            <div className="bg-white p-4 rounded-lg shadow">
-              <div className="text-2xl mb-2">🚀</div>
-              <h4 className="font-bold text-blue-600">750 Hours</h4>
-              <p className="text-sm text-gray-600">EC2 t2.micro FREE</p>
-            </div>
-            <div className="bg-white p-4 rounded-lg shadow">
-              <div className="text-2xl mb-2">📦</div>
-              <h4 className="font-bold text-purple-600">35GB Storage</h4>
-              <p className="text-sm text-gray-600">S3 + EBS FREE</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {featuredProducts.length > 0 && (
-        <section className="mb-12">
-          <h3 className="text-3xl font-bold mb-6 text-center">⭐ Featured Products</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {featuredProducts.map((product) => (
-              <div key={product.id} className="bg-white rounded-xl shadow-lg p-6 border-2 border-yellow-200 hover:shadow-xl transition-all hover:scale-105">
-                <img
-                  src={product.image_url || "/placeholder.svg"}
-                  alt={product.name}
-                  className="w-full h-48 object-cover rounded-lg mb-4"
-                />
-                <h4 className="text-xl font-semibold mb-2">{product.name}</h4>
-                <p className="text-gray-600 mb-3 text-sm">{product.description}</p>
-                <div className="flex justify-between items-center mb-4">
-                  <span className="text-2xl font-bold text-green-600">${product.price}</span>
-                  <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                    Stock: {product.stock_quantity}
-                  </span>
-                </div>
-                <button className="w-full bg-gradient-to-r from-green-600 to-blue-600 text-white py-3 rounded-lg hover:from-green-700 hover:to-blue-700 transition-all transform hover:scale-105 font-semibold">
-                  Add to Cart
-                </button>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {regularProducts.length > 0 && (
-        <section>
-          <h3 className="text-3xl font-bold mb-6 text-center">🎼 All Products</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {regularProducts.map((product) => (
-              <div key={product.id} className="bg-white rounded-lg shadow-md p-4 hover:shadow-lg transition-all hover:scale-105">
-                <img
-                  src={product.image_url || "/placeholder.svg"}
-                  alt={product.name}
-                  className="w-full h-32 object-cover rounded-lg mb-3"
-                />
-                <h4 className="text-lg font-semibold mb-2">{product.name}</h4>
-                <p className="text-gray-600 text-sm mb-2 line-clamp-2">{product.description}</p>
-                <div className="flex justify-between items-center mb-3">
-                  <span className="text-lg font-bold text-green-600">${product.price}</span>
-                  <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-                    {product.stock_quantity}
-                  </span>
-                </div>
-                <button className="w-full bg-gray-600 text-white py-2 rounded-lg hover:bg-gray-700 transition-colors text-sm">
-                  Add to Cart
-                </button>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      <div className="mt-16 text-center">
-        <div className="bg-gradient-to-r from-green-50 to-blue-50 p-8 rounded-xl shadow-lg">
-          <h3 className="text-3xl font-bold mb-6 text-gray-800">🏗️ Zero Cost Architecture</h3>
-          <p className="text-gray-700 mb-6 text-lg">
-            This e-commerce platform runs entirely on AWS Free Tier resources,
-            making it perfect for learning, testing, and portfolio projects.
-          </p>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
-            <div className="bg-white p-6 rounded-lg shadow border-l-4 border-green-500">
-              <h4 className="font-bold text-green-600 mb-3 text-lg">🖥️ Compute</h4>
-              <ul className="text-left space-y-2">
-                <li className="flex items-center"><span className="text-green-500 mr-2">✓</span>EC2 t2.micro</li>
-                <li className="flex items-center"><span className="text-green-500 mr-2">✓</span>750 hours/month</li>
-                <li className="flex items-center"><span className="text-green-500 mr-2">✓</span>1 vCPU, 1GB RAM</li>
-              </ul>
-            </div>
-            
-            <div className="bg-white p-6 rounded-lg shadow border-l-4 border-blue-500">
-              <h4 className="font-bold text-blue-600 mb-3 text-lg">🗄️ Database</h4>
-              <ul className="text-left space-y-2">
-                <li className="flex items-center"><span className="text-green-500 mr-2">✓</span>SQLite Local</li>
-                <li className="flex items-center"><span className="text-green-500 mr-2">✓</span>No RDS costs</li>
-                <li className="flex items-center"><span className="text-green-500 mr-2">✓</span>Perfect for testing</li>
-              </ul>
-            </div>
-            
-            <div className="bg-white p-6 rounded-lg shadow border-l-4 border-purple-500">
-              <h4 className="font-bold text-purple-600 mb-3 text-lg">📦 Storage</h4>
-              <ul className="text-left space-y-2">
-                <li className="flex items-center"><span className="text-green-500 mr-2">✓</span>S3: 5GB free</li>
-                <li className="flex items-center"><span className="text-green-500 mr-2">✓</span>EBS: 30GB free</li>
-                <li className="flex items-center"><span className="text-green-500 mr-2">✓</span>Static assets</li>
-              </ul>
-            </div>
-            
-            <div className="bg-white p-6 rounded-lg shadow border-l-4 border-orange-500">
-              <h4 className="font-bold text-orange-600 mb-3 text-lg">🌐 Network</h4>
-              <ul className="text-left space-y-2">
-                <li className="flex items-center"><span className="text-green-500 mr-2">✓</span>15GB transfer</li>
-                <li className="flex items-center"><span className="text-green-500 mr-2">✓</span>Elastic IP</li>
-                <li className="flex items-center"><span className="text-green-500 mr-2">✓</span>VPC included</li>
-              </ul>
-            </div>
-          </div>
-          
-          <div className="mt-8 p-6 bg-gradient-to-r from-green-100 to-blue-100 rounded-lg">
-            <h4 className="text-xl font-bold text-gray-800 mb-4">🎯 Why This Architecture?</h4>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-              <div className="text-center">
-                <div className="text-2xl mb-2">🎓</div>
-                <h5 className="font-semibold text-gray-700">Perfect for Learning</h5>
-                <p className="text-gray-600">Experiment without costs</p>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl mb-2">💼</div>
-                <h5 className="font-semibold text-gray-700">Portfolio Ready</h5>
-                <p className="text-gray-600">Showcase your skills</p>
-              </div>
-              <div className="text-center">
-                <div className="text-2xl mb-2">🚀</div>
-                <h5 className="font-semibold text-gray-700">MVP Development</h5>
-                <p className="text-gray-600">Test ideas quickly</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </main>
-  )
-}
-EOF
-
-# Create Tailwind and other config files
-cat > tailwind.config.ts << 'EOF'
-import type { Config } from 'tailwindcss'
-
-const config: Config = {
-  content: [
-    './pages/**/*.{js,ts,jsx,tsx,mdx}',
-    './components/**/*.{js,ts,jsx,tsx,mdx}',
-    './app/**/*.{js,ts,jsx,tsx,mdx}',
-  ],
-  theme: {
-    extend: {
-      backgroundImage: {
-        'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
-        'gradient-conic':
-          'conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))',
-      },
-    },
-  },
-  plugins: [],
-}
-export default config
-EOF
-
-cat > postcss.config.mjs << 'EOF'
-/** @type {import('postcss-load-config').Config} */
-const config = {
-  plugins: {
-    tailwindcss: {},
-    autoprefixer: {},
-  },
-}
-
-export default config
-EOF
-
-cat > tsconfig.json << 'EOF'
-{
-  "compilerOptions": {
-    "target": "es5",
-    "lib": ["dom", "dom.iterable", "es6"],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "noEmit": true,
-    "esModuleInterop": true,
-    "module": "esnext",
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "jsx": "preserve",
-    "incremental": true,
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["./*"]
-    }
-  },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
-}
+app.listen(PORT, () => {
+  console.log(`🚀 Legato server running on port ${PORT}`);
+  console.log(`💰 Monthly cost: $0.00 (AWS Free Tier)`);
+  console.log(`🌐 Access: http://localhost:${PORT}`);
+});
 EOF
 
 # Set ownership
-chown -R $APP_USER:$APP_USER $APP_DIR
-
-# Install dependencies
-echo "📦 Installing application dependencies..."
-cd $APP_DIR
-sudo -u $APP_USER npm install
-
-# Build the application
-echo "🔨 Building application..."
-sudo -u $APP_USER npm run build
-
-# Create PM2 ecosystem file
-cat > ecosystem.config.js << EOF
-module.exports = {
-  apps: [{
-    name: '$APP_NAME',
-    script: 'npm',
-    args: 'start',
-    cwd: '$APP_DIR',
-    instances: 1,
-    autorestart: true,
-    watch: false,
-    max_memory_restart: '800M',
-    env: {
-      NODE_ENV: 'production',
-      PORT: 3000
-    }
-  }]
-}
-EOF
-
-# Start application with PM2
-echo "🚀 Starting application..."
-cd $APP_DIR
-sudo -u $APP_USER pm2 start ecosystem.config.js
-sudo -u $APP_USER pm2 save
-sudo -u $APP_USER pm2 startup
+chown -R legato:legato "$APP_DIR"
 
 # Configure Nginx
-echo "🌐 Configuring Nginx..."
+log "🌐 Configuring Nginx..."
 cat > /etc/nginx/conf.d/legato.conf << 'EOF'
 server {
     listen 80;
     server_name _;
-
+    
     # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-XSS-Protection "1; mode=block" always;
     add_header X-Content-Type-Options "nosniff" always;
-
+    
     # Gzip compression
     gzip on;
     gzip_vary on;
     gzip_min_length 1024;
     gzip_types text/plain text/css text/xml text/javascript application/javascript application/xml+rss application/json;
-
+    
     location / {
-        proxy_pass http://localhost:3000;
+        proxy_pass http://127.0.0.1:3000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -975,139 +380,381 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_cache_bypass $http_upgrade;
     }
-
+    
+    # Health check endpoint
     location /health {
         access_log off;
-        proxy_pass http://localhost:3000/api/health;
-    }
-
-    # Static files caching
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ {
-        expires 1y;
-        add_header Cache-Control "public, immutable";
+        return 200 "healthy\n";
+        add_header Content-Type text/plain;
     }
 }
 EOF
 
-# Remove default Nginx configuration
-rm -f /etc/nginx/conf.d/default.conf
-
-# Test and start Nginx
-nginx -t
-systemctl enable nginx
+# Start and enable Nginx
 systemctl start nginx
+systemctl enable nginx
 
-# Create health check script
-cat > /usr/local/bin/health-check.sh << 'HEALTH_SCRIPT_EOF'
-#!/bin/bash
+# Create PM2 ecosystem file
+log "⚙️ Setting up PM2 configuration..."
+cat > "$APP_DIR/ecosystem.config.js" << 'EOF'
+module.exports = {
+  apps: [{
+    name: 'legato-free',
+    script: 'server.js',
+    cwd: '/opt/legato',
+    instances: 1,
+    exec_mode: 'fork',
+    env: {
+      NODE_ENV: 'production',
+      PORT: 3000
+    },
+    log_file: '/var/log/legato/combined.log',
+    out_file: '/var/log/legato/out.log',
+    error_file: '/var/log/legato/error.log',
+    time: true,
+    max_memory_restart: '200M',
+    restart_delay: 4000,
+    max_restarts: 10,
+    min_uptime: '10s'
+  }]
+};
+EOF
 
-LOG_FILE="/var/log/health-check.log"
+# Start application with PM2
+log "🚀 Starting application with PM2..."
+cd "$APP_DIR"
+sudo -u legato pm2 start ecosystem.config.js
+sudo -u legato pm2 save
+sudo -u legato pm2 startup systemd -u legato --hp /opt/legato
 
-echo "$(date): Starting health check..." >> $LOG_FILE
+# Create systemd service for PM2
+env PATH=$PATH:/usr/bin pm2 startup systemd -u legato --hp /opt/legato
 
-# Check nginx
-if systemctl is-active --quiet nginx; then
-    echo "$(date): nginx is running" >> $LOG_FILE
-else
-    echo "$(date): nginx is not running, attempting restart" >> $LOG_FILE
-    systemctl restart nginx
-fi
-
-# Check application
-if curl -s http://localhost:3000/api/health > /dev/null; then
-    echo "$(date): application is healthy" >> $LOG_FILE
-else
-    echo "$(date): application is unhealthy, attempting restart" >> $LOG_FILE
-    sudo -u $APP_USER pm2 restart $APP_NAME
-fi
-
-echo "$(date): Health check completed" >> $LOG_FILE
-HEALTH_SCRIPT_EOF
-
-chmod +x /usr/local/bin/health-check.sh
-
-# Setup health check cron job
-echo "*/5 * * * * /usr/local/bin/health-check.sh" | crontab -
-
-# Configure log rotation
+# Setup log rotation
+log "📝 Setting up log rotation..."
 cat > /etc/logrotate.d/legato << 'EOF'
-/var/log/health-check.log {
+/var/log/legato/*.log {
     daily
+    missingok
     rotate 7
     compress
     delaycompress
-    missingok
     notifempty
-    create 644 root root
-}
-
-/var/log/legato-setup.log {
-    daily
-    rotate 30
-    compress
-    delaycompress
-    missingok
-    notifempty
-    create 644 root root
+    create 644 legato legato
+    postrotate
+        sudo -u legato pm2 reloadLogs
+    endscript
 }
 EOF
 
-# Create welcome message
-cat > /etc/motd << 'EOF'
+# Create backup script for SQLite database
+log "💾 Setting up database backup..."
+cat > /opt/legato/backup-db.sh << 'EOF'
+#!/bin/bash
+# SQLite database backup script
 
-🎵 Welcome to Legato Zero-Cost E-commerce Platform! 🎵
+BACKUP_DIR="/opt/legato/backups"
+DB_FILE="/opt/legato/data/legato.db"
+DATE=$(date +%Y%m%d_%H%M%S)
+BACKUP_FILE="$BACKUP_DIR/legato_backup_$DATE.db"
 
-💰 Monthly Cost: $0.00 (AWS Free Tier Only)
+# Create backup directory
+mkdir -p "$BACKUP_DIR"
 
-This server is running a complete e-commerce solution:
-- Next.js 14 with TypeScript
-- SQLite database (local, no RDS costs)
-- Docker containerization
-- Nginx reverse proxy
-- PM2 process manager
-- AWS Free Tier optimized
+# Create backup
+sqlite3 "$DB_FILE" ".backup '$BACKUP_FILE'"
 
-Quick Commands:
-- Check app status: pm2 status
-- View app logs: pm2 logs legato-free
-- Restart app: pm2 restart legato-free
-- Check health: curl localhost/api/health
+# Compress backup
+gzip "$BACKUP_FILE"
 
-Free Tier Resources Used:
-- EC2 t2.micro (750 hours/month FREE)
-- EBS 8GB storage (30GB/month FREE)
-- S3 storage (5GB/month FREE)
-- Data transfer (15GB/month FREE)
+# Keep only last 7 backups
+find "$BACKUP_DIR" -name "legato_backup_*.db.gz" -mtime +7 -delete
 
-Perfect for:
-🎓 Learning and experimentation
-💼 Portfolio projects
-🚀 MVP development and testing
-
+echo "Database backup completed: ${BACKUP_FILE}.gz"
 EOF
 
-# Final status check
-echo "🔍 Running final health checks..."
-sleep 10
+chmod +x /opt/legato/backup-db.sh
+chown legato:legato /opt/legato/backup-db.sh
 
-# Check if services are running
-systemctl is-active --quiet nginx && echo "✅ Nginx is running" || echo "❌ Nginx failed"
-sudo -u $APP_USER pm2 list | grep -q "online" && echo "✅ Application is running" || echo "❌ Application failed"
+# Setup daily backup cron job
+log "⏰ Setting up automated backups..."
+echo "0 2 * * * /opt/legato/backup-db.sh" | crontab -u legato -
 
-# Test application endpoint
-sleep 5
-if curl -s http://localhost:3000/api/health > /dev/null; then
-    echo "✅ Application health check passed"
+# Create health check script
+log "🏥 Setting up health monitoring..."
+cat > /opt/legato/health-check.sh << 'EOF'
+#!/bin/bash
+# Health check and auto-restart script
+
+APP_NAME="legato-free"
+HEALTH_URL="http://localhost:3000/api/health"
+LOG_FILE="/var/log/legato/health-check.log"
+
+# Function to log with timestamp
+log_health() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "$LOG_FILE"
+}
+
+# Check if application is responding
+if curl -f -s --max-time 10 "$HEALTH_URL" > /dev/null; then
+    log_health "✅ Application is healthy"
 else
-    echo "❌ Application health check failed"
+    log_health "❌ Application health check failed, attempting restart..."
+    
+    # Restart the application
+    sudo -u legato pm2 restart "$APP_NAME"
+    
+    # Wait a moment and check again
+    sleep 10
+    if curl -f -s --max-time 10 "$HEALTH_URL" > /dev/null; then
+        log_health "✅ Application restarted successfully"
+    else
+        log_health "❌ Application restart failed"
+    fi
+fi
+EOF
+
+chmod +x /opt/legato/health-check.sh
+chown legato:legato /opt/legato/health-check.sh
+
+# Setup health check cron job (every 5 minutes)
+echo "*/5 * * * * /opt/legato/health-check.sh" | crontab -u legato -
+
+# Configure firewall (if iptables is available)
+log "🔒 Configuring basic firewall rules..."
+if command -v iptables &> /dev/null; then
+    # Allow SSH, HTTP, and HTTPS
+    iptables -A INPUT -p tcp --dport 22 -j ACCEPT
+    iptables -A INPUT -p tcp --dport 80 -j ACCEPT
+    iptables -A INPUT -p tcp --dport 443 -j ACCEPT
+    iptables -A INPUT -p tcp --dport 3000 -j ACCEPT
+    
+    # Save iptables rules
+    service iptables save 2>/dev/null || true
 fi
 
-echo "=== Zero-Cost Legato Setup Completed at $(date) ==="
-echo "🎉 Your zero-cost e-commerce platform is ready!"
-echo "💰 Monthly cost: \$0.00 (AWS Free Tier)"
-echo "🌐 Access your store at: http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)"
-echo "📋 Health check: curl http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)/api/health"
-echo "🎯 Perfect for testing, learning, and portfolio projects!"
+# Install and configure CloudWatch agent (free tier)
+log "📊 Setting up CloudWatch monitoring..."
+yum install -y amazon-cloudwatch-agent
 
-# Log completion
-echo "Zero-cost setup completed successfully at $(date)" >> $LOG_FILE
+# Create CloudWatch config
+cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << EOF
+{
+    "metrics": {
+        "namespace": "Legato/Application",
+        "metrics_collected": {
+            "cpu": {
+                "measurement": ["cpu_usage_idle", "cpu_usage_iowait", "cpu_usage_user", "cpu_usage_system"],
+                "metrics_collection_interval": 300,
+                "totalcpu": false
+            },
+            "disk": {
+                "measurement": ["used_percent"],
+                "metrics_collection_interval": 300,
+                "resources": ["*"]
+            },
+            "diskio": {
+                "measurement": ["io_time"],
+                "metrics_collection_interval": 300,
+                "resources": ["*"]
+            },
+            "mem": {
+                "measurement": ["mem_used_percent"],
+                "metrics_collection_interval": 300
+            }
+        }
+    },
+    "logs": {
+        "logs_collected": {
+            "files": {
+                "collect_list": [
+                    {
+                        "file_path": "/var/log/legato/combined.log",
+                        "log_group_name": "legato-application",
+                        "log_stream_name": "{instance_id}/application"
+                    },
+                    {
+                        "file_path": "/var/log/legato/error.log",
+                        "log_group_name": "legato-errors",
+                        "log_stream_name": "{instance_id}/errors"
+                    }
+                ]
+            }
+        }
+    }
+}
+EOF
+
+# Start CloudWatch agent
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+    -a fetch-config \
+    -m ec2 \
+    -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json \
+    -s
+
+# Create status page
+log "📄 Creating status page..."
+mkdir -p /opt/legato/public
+cat > /opt/legato/public/status.html << 'EOF'
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Legato - System Status</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .status-good { color: #10b981; }
+        .status-warning { color: #f59e0b; }
+        .status-error { color: #ef4444; }
+        .metric { display: flex; justify-content: space-between; padding: 10px; border-bottom: 1px solid #eee; }
+        .refresh-btn { background: #2563eb; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎵 Legato System Status</h1>
+        <button class="refresh-btn" onclick="location.reload()">Refresh Status</button>
+        
+        <h2>Application Health</h2>
+        <div id="health-status">Loading...</div>
+        
+        <h2>System Metrics</h2>
+        <div class="metric">
+            <span>Platform:</span>
+            <span>AWS Free Tier</span>
+        </div>
+        <div class="metric">
+            <span>Instance Type:</span>
+            <span>t2.micro</span>
+        </div>
+        <div class="metric">
+            <span>Monthly Cost:</span>
+            <span class="status-good">$0.00</span>
+        </div>
+        <div class="metric">
+            <span>Database:</span>
+            <span>SQLite (Local)</span>
+        </div>
+        <div class="metric">
+            <span>Process Manager:</span>
+            <span>PM2</span>
+        </div>
+        <div class="metric">
+            <span>Web Server:</span>
+            <span>Nginx</span>
+        </div>
+    </div>
+    
+    <script>
+        fetch('/api/health')
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('health-status').innerHTML = `
+                    <div class="metric">
+                        <span>Status:</span>
+                        <span class="status-good">${data.status}</span>
+                    </div>
+                    <div class="metric">
+                        <span>Uptime:</span>
+                        <span>${Math.floor(data.uptime / 3600)}h ${Math.floor((data.uptime % 3600) / 60)}m</span>
+                    </div>
+                    <div class="metric">
+                        <span>Last Check:</span>
+                        <span>${new Date(data.timestamp).toLocaleString()}</span>
+                    </div>
+                `;
+            })
+            .catch(err => {
+                document.getElementById('health-status').innerHTML = `
+                    <div class="metric">
+                        <span>Status:</span>
+                        <span class="status-error">Error loading status</span>
+                    </div>
+                `;
+            });
+    </script>
+</body>
+</html>
+EOF
+
+# Final setup steps
+log "🔧 Final configuration steps..."
+
+# Ensure all services are running
+systemctl restart nginx
+systemctl enable nginx
+
+# Wait for application to start
+sleep 10
+
+# Test application
+log "🧪 Testing application..."
+if curl -f -s http://localhost:3000/api/health > /dev/null; then
+    log "✅ Application is running and healthy"
+else
+    log "⚠️ Application may still be starting up"
+fi
+
+# Create deployment summary
+cat > /opt/legato/deployment-summary.txt << EOF
+Legato Zero Cost E-commerce Platform
+====================================
+Deployment completed: $(date)
+
+🏗️ Architecture:
+- EC2 t2.micro instance (FREE - 750 hours/month)
+- SQLite database (No RDS costs)
+- S3 bucket for assets (FREE - 5GB)
+- Nginx reverse proxy
+- PM2 process manager
+- CloudWatch monitoring (FREE tier)
+
+🌐 Endpoints:
+- Application: http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
+- Health Check: http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)/api/health
+- Status Page: http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)/status.html
+
+🔑 Admin Access:
+- Email: admin@legato.com
+- Password: admin123
+
+💰 Monthly Cost: \$0.00 (AWS Free Tier)
+
+🔧 Management:
+- View logs: pm2 logs legato-free
+- Restart app: pm2 restart legato-free
+- Database backup: /opt/legato/backup-db.sh
+- Health check: /opt/legato/health-check.sh
+
+📊 Monitoring:
+- CloudWatch metrics enabled
+- Automated health checks every 5 minutes
+- Daily database backups
+- Log rotation configured
+
+🎯 Perfect for:
+- Learning cloud deployment
+- Portfolio projects
+- MVP testing
+- E-commerce experimentation
+EOF
+
+log "🎉 Zero Cost E-commerce Platform setup completed successfully!"
+log "💰 Monthly cost: \$0.00 (AWS Free Tier)"
+log "🌐 Application should be accessible shortly"
+log "📄 Check deployment-summary.txt for details"
+
+# Send completion notification to CloudWatch
+aws logs create-log-group --log-group-name legato-deployment --region "$AWS_REGION" 2>/dev/null || true
+aws logs create-log-stream --log-group-name legato-deployment --log-stream-name "$(date +%Y%m%d)" --region "$AWS_REGION" 2>/dev/null || true
+
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Legato Zero Cost Platform deployment completed successfully" | \
+aws logs put-log-events \
+    --log-group-name legato-deployment \
+    --log-stream-name "$(date +%Y%m%d)" \
+    --log-events timestamp=$(date +%s000),message="Deployment completed successfully" \
+    --region "$AWS_REGION" 2>/dev/null || true
+
+log "✅ Setup script completed successfully!"

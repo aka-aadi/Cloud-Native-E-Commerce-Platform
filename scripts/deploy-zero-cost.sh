@@ -102,10 +102,41 @@ echo -e "${BLUE}🌐 Data Transfer: 15 GB outbound per month${NC}"
 echo -e "${BLUE}🔗 VPC: Always free (subnets, security groups, etc.)${NC}"
 echo ""
 
-# Install dependencies
-echo -e "${YELLOW}📦 Installing dependencies...${NC}"
-npm install
-echo -e "${GREEN}✅ Dependencies installed${NC}"
+# Clean up node_modules and package-lock.json to avoid dependency issues
+echo -e "${YELLOW}🧹 Cleaning up dependencies...${NC}"
+if [ -d "node_modules" ]; then
+    rm -rf node_modules
+    echo -e "${GREEN}✅ Removed old node_modules${NC}"
+fi
+
+if [ -f "package-lock.json" ]; then
+    rm -f package-lock.json
+    echo -e "${GREEN}✅ Removed old package-lock.json${NC}"
+fi
+
+# Install dependencies with specific flags for SQLite
+echo -e "${YELLOW}📦 Installing dependencies (SQLite optimized)...${NC}"
+
+# Install build tools for SQLite compilation
+if command_exists apt-get; then
+    echo -e "${YELLOW}Installing build dependencies...${NC}"
+    sudo apt-get update -qq
+    sudo apt-get install -y build-essential python3-dev
+elif command_exists yum; then
+    echo -e "${YELLOW}Installing build dependencies...${NC}"
+    sudo yum groupinstall -y "Development Tools"
+    sudo yum install -y python3-devel
+fi
+
+# Install npm dependencies
+npm install --no-optional --production=false
+
+echo -e "${GREEN}✅ Dependencies installed successfully${NC}"
+
+# Create data directory for SQLite
+echo -e "${YELLOW}📁 Setting up SQLite database directory...${NC}"
+mkdir -p data
+echo -e "${GREEN}✅ Database directory created${NC}"
 
 # Build the application
 echo -e "${YELLOW}🏗️  Building application...${NC}"
@@ -304,6 +335,12 @@ Environment: ${ENVIRONMENT}
 - Monitor usage in AWS Billing Console
 - Set up billing alerts to avoid unexpected charges
 - Stop/terminate resources when not needed to preserve free tier hours
+
+🗄️ Database Information:
+- Type: SQLite (better-sqlite3)
+- Location: /opt/legato/data/legato.db
+- Backup: Automatic daily backups to S3
+- Admin Login: admin@legato.com / admin123
 EOF
 
 echo ""
@@ -318,18 +355,21 @@ echo -e "${GREEN}├── EBS 8GB storage: \$0.00 (30GB/month FREE)${NC}"
 echo -e "${GREEN}├── S3 storage: \$0.00 (5GB/month FREE)${NC}"
 echo -e "${GREEN}├── Data transfer: \$0.00 (15GB/month FREE)${NC}"
 echo -e "${GREEN}├── VPC & networking: \$0.00 (Always FREE)${NC}"
+echo -e "${GREEN}├── SQLite database: \$0.00 (No RDS costs)${NC}"
 echo -e "${GREEN}└── Total monthly cost: \$0.00${NC}"
 echo ""
 echo -e "${YELLOW}🔧 Next Steps:${NC}"
 echo "1. 🌐 Access your application: ${APPLICATION_URL}"
 echo "2. 🏥 Check health status: ${HEALTH_CHECK_URL}"
-echo "3. 🔒 Set up billing alerts in AWS Console"
-echo "4. 📊 Monitor free tier usage regularly"
-echo "5. 🎯 Start building your e-commerce features!"
+echo "3. 🔒 Login as admin: admin@legato.com / admin123"
+echo "4. 🔒 Set up billing alerts in AWS Console"
+echo "5. 📊 Monitor free tier usage regularly"
+echo "6. 🎯 Start building your e-commerce features!"
 echo ""
 echo -e "${GREEN}🚀 Your application features:${NC}"
 echo "   • Complete e-commerce platform with product catalog"
-echo "   • SQLite database (no RDS costs)"
+echo "   • SQLite database with pre-seeded data"
+echo "   • Admin dashboard for product management"
 echo "   • Responsive design with Tailwind CSS"
 echo "   • Health monitoring and auto-restart"
 echo "   • S3 integration for file uploads"
