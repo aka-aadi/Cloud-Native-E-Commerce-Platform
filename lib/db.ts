@@ -3,27 +3,17 @@ import { join } from "path"
 import bcrypt from "bcryptjs" // Import bcryptjs at the top
 
 // SQLite database configuration for zero-cost deployment
-const dbPath =
-  process.env.NODE_ENV === "production"
-    ? "/opt/legato/data/legato.db"
-    : process.env.DATABASE_PATH || join(process.cwd(), "data", "legato.db")
+const dbPath = process.env.DATABASE_PATH || join(process.cwd(), "data", "legato.db")
 
-let db: Database.Database
+const db = new Database(dbPath)
 
-try {
-  db = new Database(dbPath)
+// Enable WAL mode for better performance
+db.pragma("journal_mode = WAL")
+db.pragma("synchronous = NORMAL")
+db.pragma("cache_size = 1000000")
+db.pragma("foreign_keys = ON")
 
-  // Enable WAL mode for better performance
-  db.pragma("journal_mode = WAL")
-  db.pragma("synchronous = NORMAL")
-  db.pragma("cache_size = 1000000")
-  db.pragma("foreign_keys = ON")
-
-  console.log("✅ SQLite database connected successfully")
-} catch (error) {
-  console.error("❌ Failed to connect to SQLite database:", error)
-  process.exit(1)
-}
+console.log("✅ SQLite database connected successfully")
 
 // Initialize database schema
 function initDatabase() {
@@ -229,5 +219,3 @@ export const getStats = () => {
 
 // Ensure database is initialized on module load
 initDatabase()
-
-export default db
