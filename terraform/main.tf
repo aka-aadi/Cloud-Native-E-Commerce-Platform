@@ -10,29 +10,35 @@ terraform {
       version = "~> 3.1"
     }
   }
+
+  backend "s3" {
+    bucket = "legato-terraform-state"
+    key    = "terraform.tfstate"
+    region = "us-east-1"
+  }
 }
 
 # Variables
 variable "aws_region" {
   description = "AWS region for deployment"
   type        = string
-  default     = "ap-south-1"
+  default     = "us-east-1"  # Best region for free tier
 }
 
 variable "project_name" {
   description = "Name of the project"
   type        = string
-  default     = "legato"
+  default     = "legato-free"
 }
 
 variable "environment" {
   description = "Environment (dev, staging, prod)"
   type        = string
-  default     = "prod"
+  default     = "development"
 }
 
 variable "instance_type" {
-  description = "EC2 instance type"
+  description = "EC2 instance type (free tier)"
   type        = string
   default     = "t2.micro"
 }
@@ -40,7 +46,7 @@ variable "instance_type" {
 variable "key_name" {
   description = "AWS Key Pair name"
   type        = string
-  default     = "legato-key"
+  default     = "legato-free-key"
 }
 
 # Configure AWS Provider
@@ -75,32 +81,32 @@ resource "random_string" "suffix" {
   upper   = false
 }
 
-# VPC
+# VPC (Free)
 resource "aws_vpc" "main" {
   cidr_block           = "10.0.0.0/16"
   enable_dns_hostnames = true
   enable_dns_support   = true
 
   tags = {
-    Name        = "${var.project_name}-vpc-${random_string.suffix.result}"
+    Name        = "${var.project_name}-vpc"
     Project     = var.project_name
     Environment = var.environment
     CostCenter  = "free-tier"
   }
 }
 
-# Internet Gateway
+# Internet Gateway (Free)
 resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
 
   tags = {
-    Name        = "${var.project_name}-igw-${random_string.suffix.result}"
+    Name        = "${var.project_name}-igw"
     Project     = var.project_name
     Environment = var.environment
   }
 }
 
-# Public Subnet
+# Public Subnet (Free)
 resource "aws_subnet" "public" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = "10.0.1.0/24"
@@ -108,28 +114,14 @@ resource "aws_subnet" "public" {
   map_public_ip_on_launch = true
 
   tags = {
-    Name        = "${var.project_name}-public-subnet-${random_string.suffix.result}"
+    Name        = "${var.project_name}-public-subnet"
     Project     = var.project_name
     Environment = var.environment
     Type        = "public"
   }
 }
 
-# Private Subnet
-resource "aws_subnet" "private" {
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = "10.0.2.0/24"
-  availability_zone = data.aws_availability_zones.available.names[1]
-
-  tags = {
-    Name        = "${var.project_name}-private-subnet-${random_string.suffix.result}"
-    Project     = var.project_name
-    Environment = var.environment
-    Type        = "private"
-  }
-}
-
-# Route Table for Public Subnet
+# Route Table for Public Subnet (Free)
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
 
@@ -139,19 +131,19 @@ resource "aws_route_table" "public" {
   }
 
   tags = {
-    Name        = "${var.project_name}-public-rt-${random_string.suffix.result}"
+    Name        = "${var.project_name}-public-rt"
     Project     = var.project_name
     Environment = var.environment
   }
 }
 
-# Route Table Association for Public Subnet
+# Route Table Association (Free)
 resource "aws_route_table_association" "public" {
   subnet_id      = aws_subnet.public.id
   route_table_id = aws_route_table.public.id
 }
 
-# Security Group for Application
+# Security Group for Application (Free)
 resource "aws_security_group" "app" {
   name_prefix = "${var.project_name}-app-"
   vpc_id      = aws_vpc.main.id
@@ -190,7 +182,7 @@ resource "aws_security_group" "app" {
     from_port   = 3000
     to_port     = 3000
     protocol    = "tcp"
-    cidr_blocks = ["10.0.0.0/16"]
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   # All outbound traffic
@@ -202,25 +194,25 @@ resource "aws_security_group" "app" {
   }
 
   tags = {
-    Name        = "${var.project_name}-app-sg-${random_string.suffix.result}"
+    Name        = "${var.project_name}-app-sg"
     Project     = var.project_name
     Environment = var.environment
   }
 }
 
-# S3 Bucket for Assets
+# S3 Bucket for Assets (Free - 5GB)
 resource "aws_s3_bucket" "assets" {
   bucket = "${var.project_name}-assets-${random_string.suffix.result}"
 
   tags = {
-    Name        = "${var.project_name}-assets-${random_string.suffix.result}"
+    Name        = "${var.project_name}-assets"
     Project     = var.project_name
     Environment = var.environment
     Purpose     = "static-assets"
   }
 }
 
-# S3 Bucket Versioning
+# S3 Bucket Versioning (Free)
 resource "aws_s3_bucket_versioning" "assets" {
   bucket = aws_s3_bucket.assets.id
   versioning_configuration {
@@ -228,7 +220,7 @@ resource "aws_s3_bucket_versioning" "assets" {
   }
 }
 
-# S3 Bucket Server Side Encryption
+# S3 Bucket Server Side Encryption (Free)
 resource "aws_s3_bucket_server_side_encryption_configuration" "assets" {
   bucket = aws_s3_bucket.assets.id
 
@@ -249,7 +241,7 @@ resource "aws_s3_bucket_public_access_block" "assets" {
   restrict_public_buckets = false
 }
 
-# S3 Bucket Policy for Public Read
+# S3 Bucket Policy for Public Read (Free)
 resource "aws_s3_bucket_policy" "assets" {
   bucket = aws_s3_bucket.assets.id
 
@@ -269,9 +261,9 @@ resource "aws_s3_bucket_policy" "assets" {
   depends_on = [aws_s3_bucket_public_access_block.assets]
 }
 
-# IAM Role for EC2 Instance
+# IAM Role for EC2 Instance (Free)
 resource "aws_iam_role" "app_role" {
-  name = "${var.project_name}-app-role-${random_string.suffix.result}"
+  name = "${var.project_name}-app-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -287,13 +279,13 @@ resource "aws_iam_role" "app_role" {
   })
 
   tags = {
-    Name        = "${var.project_name}-app-role-${random_string.suffix.result}"
+    Name        = "${var.project_name}-app-role"
     Project     = var.project_name
     Environment = var.environment
   }
 }
 
-# IAM Policy for S3 Access
+# IAM Policy for S3 Access (Free)
 resource "aws_iam_role_policy" "app_s3_policy" {
   name = "${var.project_name}-s3-policy"
   role = aws_iam_role.app_role.id
@@ -318,19 +310,19 @@ resource "aws_iam_role_policy" "app_s3_policy" {
   })
 }
 
-# IAM Instance Profile
+# IAM Instance Profile (Free)
 resource "aws_iam_instance_profile" "app_profile" {
-  name = "${var.project_name}-app-profile-${random_string.suffix.result}"
+  name = "${var.project_name}-app-profile"
   role = aws_iam_role.app_role.name
 
   tags = {
-    Name        = "${var.project_name}-app-profile-${random_string.suffix.result}"
+    Name        = "${var.project_name}-app-profile"
     Project     = var.project_name
     Environment = var.environment
   }
 }
 
-# Application EC2 Instance
+# Application EC2 Instance (Free Tier - t2.micro)
 resource "aws_instance" "app" {
   ami                    = data.aws_ami.amazon_linux.id
   instance_type          = var.instance_type
@@ -340,16 +332,16 @@ resource "aws_instance" "app" {
   iam_instance_profile   = aws_iam_instance_profile.app_profile.name
 
   user_data = base64encode(templatefile("${path.module}/app-userdata.sh", {
-    aws_region    = var.aws_region
-    s3_bucket     = aws_s3_bucket.assets.bucket
-    project_name  = var.project_name
-    environment   = var.environment
+    aws_region   = var.aws_region
+    s3_bucket    = aws_s3_bucket.assets.bucket
+    project_name = var.project_name
+    environment  = var.environment
   }))
 
   root_block_device {
     volume_type = "gp2"
-    volume_size = 20
-    encrypted   = true
+    volume_size = 8  # Free tier limit
+    encrypted   = false  # Encryption costs extra
 
     tags = {
       Name        = "${var.project_name}-app-root-volume"
@@ -359,7 +351,7 @@ resource "aws_instance" "app" {
   }
 
   tags = {
-    Name        = "${var.project_name}-app-${random_string.suffix.result}"
+    Name        = "${var.project_name}-app"
     Project     = var.project_name
     Environment = var.environment
     Type        = "application-server"
@@ -371,13 +363,13 @@ resource "aws_instance" "app" {
   }
 }
 
-# Elastic IP for Application Server
+# Elastic IP for Application Server (Free)
 resource "aws_eip" "app" {
   instance = aws_instance.app.id
   domain   = "vpc"
 
   tags = {
-    Name        = "${var.project_name}-app-eip-${random_string.suffix.result}"
+    Name        = "${var.project_name}-app-eip"
     Project     = var.project_name
     Environment = var.environment
   }
@@ -411,12 +403,6 @@ output "s3_bucket_url" {
   value       = "https://${aws_s3_bucket.assets.bucket}.s3.${var.aws_region}.amazonaws.com"
 }
 
-output "database_connection" {
-  description = "Database connection details"
-  value       = "postgresql://legato_user:legato_secure_2024!@localhost:5432/legato_db"
-  sensitive   = true
-}
-
 output "health_check_url" {
   description = "Health check endpoint"
   value       = "http://${aws_eip.app.public_ip}/api/health"
@@ -432,5 +418,16 @@ output "deployment_summary" {
     application_url = "http://${aws_eip.app.public_ip}"
     s3_bucket      = aws_s3_bucket.assets.bucket
     monthly_cost   = "$0.00 (AWS Free Tier)"
+  }
+}
+
+output "free_tier_usage" {
+  description = "Free tier resource usage"
+  value = {
+    ec2_hours_per_month = "750 hours (t2.micro)"
+    ebs_storage_gb     = "30 GB (gp2)"
+    s3_storage_gb      = "5 GB"
+    data_transfer_gb   = "15 GB outbound"
+    estimated_cost     = "$0.00/month"
   }
 }

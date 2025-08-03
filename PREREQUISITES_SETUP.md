@@ -61,7 +61,7 @@ Ensure these services are available in your region:
 ## 2. AWS CLI Installation
 
 ### Windows
-```powershell
+\`\`\`powershell
 # Download and run the installer
 msiexec.exe /i https://awscli.amazonaws.com/AWSCLIV2.msi
 

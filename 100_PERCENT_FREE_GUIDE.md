@@ -363,7 +363,7 @@ ssh -i ~/.ssh/id_rsa ec2-user@YOUR_IP 'top -n 1'
 *Remember: This setup costs $0.00/month within AWS Free Tier limits. Monitor your usage to stay within these limits.*
 \`\`\`
 
-```shellscript file="scripts/cleanup-resources.sh"
+\`\`\`shellscript file="scripts/cleanup-resources.sh"
 #!/bin/bash
 
 # Cleanup script for MusicMart AWS resources
