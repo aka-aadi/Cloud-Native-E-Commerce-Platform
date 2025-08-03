@@ -1,13 +1,24 @@
 import Database from "better-sqlite3"
-import { join } from "path"
+import path from "path"
 import bcrypt from "bcryptjs" // Import bcryptjs at the top
 
-// SQLite database configuration for zero-cost deployment
-const dbPath = process.env.DATABASE_PATH || join(process.cwd(), "data", "legato.db")
+// Determine the database path based on the environment
+// For production, consider a persistent storage solution like AWS EFS or S3,
+// or an external database service. For this example, we'll use a local file.
+const DATABASE_PATH = process.env.DATABASE_PATH || path.join(process.cwd(), "data", "musicmart.db")
 
-const db = new Database(dbPath)
+// Ensure the directory exists if using a local path
+// This is important for local development and if the build environment allows writing to disk.
+// In a serverless function environment, this might not be applicable as the file system is often ephemeral.
+const dbDirectory = path.dirname(DATABASE_PATH)
+if (!require("fs").existsSync(dbDirectory)) {
+  require("fs").mkdirSync(dbDirectory, { recursive: true })
+}
 
-// Enable WAL mode for better performance
+// Initialize the database connection
+const db = new Database(DATABASE_PATH)
+
+// Enable WAL mode for better concurrency and durability
 db.pragma("journal_mode = WAL")
 db.pragma("synchronous = NORMAL")
 db.pragma("cache_size = 1000000")
@@ -68,7 +79,7 @@ function initDatabase() {
     // For this demo, we'll use a simple hash.
     const adminPassword = bcrypt.hashSync("admin123", 10)
     const insertUser = db.prepare("INSERT INTO users (email, password_hash, name, role) VALUES (?, ?, ?, ?)")
-    insertUser.run("admin@legato.com", adminPassword, "Admin User", "admin")
+    insertUser.run("admin@musicmart.com", adminPassword, "Admin User", "admin")
 
     // Insert sample products
     const insertProduct = db.prepare(
@@ -219,3 +230,6 @@ export const getStats = () => {
 
 // Ensure database is initialized on module load
 initDatabase()
+
+// Export the database instance as the default export
+export default db
