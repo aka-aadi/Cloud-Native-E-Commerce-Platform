@@ -1,69 +1,45 @@
-import { Pool } from "pg"
 import Database from "better-sqlite3"
-import path from "path"
-import bcrypt from "bcryptjs"
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
-})
+import { join } from "path"
+import bcrypt from "bcryptjs" // Import bcryptjs at the top
 
 // SQLite database configuration for zero-cost deployment
 const dbPath =
-  process.env.NODE_ENV === "production" ? "/opt/legato/data/legato.db" : path.join(process.cwd(), "data", "legato.db")
+  process.env.NODE_ENV === "production"
+    ? "/opt/legato/data/legato.db"
+    : process.env.DATABASE_PATH || join(process.cwd(), "data", "legato.db")
 
-let sqliteDb: Database.Database
+let db: Database.Database
 
-export function getSQLiteDatabase() {
-  if (!sqliteDb) {
-    try {
-      // Ensure data directory exists
-      const fs = require("fs")
-      const dbDir = path.dirname(dbPath)
-      if (!fs.existsSync(dbDir)) {
-        fs.mkdirSync(dbDir, { recursive: true })
-      }
+try {
+  db = new Database(dbPath)
 
-      sqliteDb = new Database(dbPath)
+  // Enable WAL mode for better performance
+  db.pragma("journal_mode = WAL")
+  db.pragma("synchronous = NORMAL")
+  db.pragma("cache_size = 1000000")
+  db.pragma("foreign_keys = ON")
 
-      // Enable WAL mode for better performance
-      sqliteDb.pragma("journal_mode = WAL")
-      sqliteDb.pragma("synchronous = NORMAL")
-      sqliteDb.pragma("cache_size = 1000000")
-      sqliteDb.pragma("foreign_keys = ON")
-
-      // Initialize database schema
-      initializeSchema()
-
-      console.log("✅ SQLite database connected successfully")
-    } catch (error) {
-      console.error("❌ Database connection failed:", error)
-      throw error
-    }
-  }
-  return sqliteDb
+  console.log("✅ SQLite database connected successfully")
+} catch (error) {
+  console.error("❌ Failed to connect to SQLite database:", error)
+  process.exit(1)
 }
 
-function initializeSchema() {
-  const db = getSQLiteDatabase()
+// Initialize database schema
+function initDatabase() {
+  console.log("🗄️ Initializing SQLite database...")
 
-  // Create tables if they don't exist
+  // Create tables
   db.exec(`
-    -- Users table
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       email TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
       name TEXT NOT NULL,
-      role TEXT DEFAULT 'user' CHECK (role IN ('user', 'admin')),
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      role TEXT DEFAULT 'user',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
-    -- Categories table
     CREATE TABLE IF NOT EXISTS categories (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT UNIQUE NOT NULL,
@@ -71,7 +47,6 @@ function initializeSchema() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
-    -- Products table
     CREATE TABLE IF NOT EXISTS products (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -79,325 +54,180 @@ function initializeSchema() {
       price DECIMAL(10,2) NOT NULL,
       category_id INTEGER,
       image_url TEXT,
-      status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
-      seller_id INTEGER,
+      status TEXT DEFAULT 'approved',
       stock_quantity INTEGER DEFAULT 0,
       featured BOOLEAN DEFAULT FALSE,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (category_id) REFERENCES categories(id),
-      FOREIGN KEY (seller_id) REFERENCES users(id)
+      FOREIGN KEY (category_id) REFERENCES categories(id)
     );
-
-    -- Orders table
-    CREATE TABLE IF NOT EXISTS orders (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      total_amount DECIMAL(10,2) NOT NULL,
-      status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'shipped', 'delivered', 'cancelled')),
-      shipping_address TEXT NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id)
-    );
-
-    -- Order items table
-    CREATE TABLE IF NOT EXISTS order_items (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      order_id INTEGER NOT NULL,
-      product_id INTEGER NOT NULL,
-      quantity INTEGER NOT NULL,
-      price DECIMAL(10,2) NOT NULL,
-      FOREIGN KEY (order_id) REFERENCES orders(id),
-      FOREIGN KEY (product_id) REFERENCES products(id)
-    );
-
-    -- Cart table
-    CREATE TABLE IF NOT EXISTS cart (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      product_id INTEGER NOT NULL,
-      quantity INTEGER NOT NULL DEFAULT 1,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id),
-      FOREIGN KEY (product_id) REFERENCES products(id),
-      UNIQUE(user_id, product_id)
-    );
-
-    -- Create indexes for better performance
-    CREATE INDEX IF NOT EXISTS idx_products_category ON products(category_id);
-    CREATE INDEX IF NOT EXISTS idx_products_seller ON products(seller_id);
-    CREATE INDEX IF NOT EXISTS idx_products_status ON products(status);
-    CREATE INDEX IF NOT EXISTS idx_products_featured ON products(featured);
-    CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(user_id);
-    CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
-    CREATE INDEX IF NOT EXISTS idx_cart_user ON cart(user_id);
   `)
 
-  // Insert default data if tables are empty
-  insertDefaultData()
-}
+  // Insert sample data (only if tables are empty)
+  const categoryCount = db.prepare("SELECT COUNT(*) as count FROM categories").get().count
+  if (categoryCount === 0) {
+    console.log("🌱 Seeding database with sample data...")
 
-function insertDefaultData() {
-  const db = getSQLiteDatabase()
-
-  // Check if we have any categories
-  const categoryCount = db.prepare("SELECT COUNT(*) as count FROM categories").get() as { count: number }
-
-  if (categoryCount.count === 0) {
-    console.log("🌱 Seeding database with default data...")
-
-    // Insert default categories
+    // Insert categories
     const insertCategory = db.prepare("INSERT INTO categories (name, description) VALUES (?, ?)")
-    const categories = [
-      ["Guitars", "Acoustic and electric guitars"],
-      ["Keyboards", "Pianos, synthesizers, and keyboards"],
-      ["Drums", "Drum sets and percussion instruments"],
-      ["Strings", "Violins, cellos, and other string instruments"],
-      ["Brass", "Trumpets, trombones, and brass instruments"],
-      ["Woodwinds", "Flutes, clarinets, and woodwind instruments"],
-      ["Audio Equipment", "Amplifiers, microphones, and audio gear"],
-      ["Accessories", "Cases, stands, and musical accessories"],
-    ]
-
-    categories.forEach(([name, description]) => {
-      insertCategory.run(name, description)
-    })
+    insertCategory.run("Guitars", "Acoustic and electric guitars")
+    insertCategory.run("Keyboards", "Pianos and keyboards")
+    insertCategory.run("Drums", "Drum sets and percussion")
 
     // Insert admin user
+    // Note: In a real app, handle password hashing securely on the server.
+    // For this demo, we'll use a simple hash.
     const adminPassword = bcrypt.hashSync("admin123", 10)
     const insertUser = db.prepare("INSERT INTO users (email, password_hash, name, role) VALUES (?, ?, ?, ?)")
     insertUser.run("admin@legato.com", adminPassword, "Admin User", "admin")
 
     // Insert sample products
-    const insertProduct = db.prepare(`
-      INSERT INTO products (name, description, price, category_id, image_url, status, stock_quantity, featured) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `)
+    const insertProduct = db.prepare(
+      "INSERT INTO products (name, description, price, category_id, featured, stock_quantity) VALUES (?, ?, ?, ?, ?, ?)",
+    )
+    insertProduct.run("Acoustic Guitar Starter Pack", "Perfect for beginners", 299.99, 1, true, 15)
+    insertProduct.run("Electric Guitar Pro", "Professional electric guitar", 599.99, 1, true, 8)
+    insertProduct.run("Digital Piano 88-Key", "Full-size weighted keys", 899.99, 2, true, 5)
+    insertProduct.run("Professional Drum Set", "5-piece drum set", 1299.99, 3, false, 3)
 
-    const products = [
-      [
-        "Acoustic Guitar Starter Pack",
-        "Perfect for beginners with everything you need to start playing",
-        299.99,
-        1,
-        "/placeholder.jpg",
-        "approved",
-        15,
-        true,
-      ],
-      [
-        "Electric Guitar - Stratocaster Style",
-        "Classic electric guitar with versatile sound",
-        599.99,
-        1,
-        "/placeholder.jpg",
-        "approved",
-        8,
-        true,
-      ],
-      [
-        "Digital Piano 88-Key",
-        "Full-size weighted keys with authentic piano sound",
-        899.99,
-        2,
-        "/placeholder.jpg",
-        "approved",
-        5,
-        true,
-      ],
-      [
-        "Professional Drum Set",
-        "Complete 5-piece drum set for intermediate players",
-        1299.99,
-        3,
-        "/placeholder.jpg",
-        "approved",
-        3,
-        false,
-      ],
-      [
-        "Violin 4/4 Full Size",
-        "Handcrafted violin with bow and case included",
-        449.99,
-        4,
-        "/placeholder.jpg",
-        "approved",
-        12,
-        false,
-      ],
-      [
-        "USB Audio Interface",
-        "Professional 2-channel audio interface for recording",
-        199.99,
-        7,
-        "/placeholder.jpg",
-        "approved",
-        20,
-        false,
-      ],
-    ]
-
-    products.forEach((product) => {
-      insertProduct.run(...product)
-    })
-
-    console.log("✅ Database seeded with default data")
+    console.log("✅ Database seeded successfully")
   }
 }
 
-export const db = {
-  query: (text: string, params?: any[]) => pool.query(text, params),
-  getClient: () => pool.connect(),
-  getSQLiteDatabase: getSQLiteDatabase,
+// Database query functions
+export const dbQuery = {
+  // Users
+  createUser: db.prepare(`
+    INSERT INTO users (email, password_hash, name, role) 
+    VALUES (?, ?, ?, ?)
+  `),
+
+  getUserByEmail: db.prepare(`
+    SELECT * FROM users WHERE email = ?
+  `),
+
+  getUserById: db.prepare(`
+    SELECT * FROM users WHERE id = ?
+  `),
+
+  getAllUsers: db.prepare(`
+    SELECT id, email, name, role, created_at FROM users ORDER BY created_at DESC
+  `),
+
+  // Categories
+  getAllCategories: db.prepare(`
+    SELECT * FROM categories ORDER BY name
+  `),
+
+  createCategory: db.prepare(`
+    INSERT INTO categories (name, description) VALUES (?, ?)
+  `),
+
+  // Products
+  getAllProducts: db.prepare(`
+    SELECT p.*, c.name as category_name, u.name as seller_name
+    FROM products p 
+    LEFT JOIN categories c ON p.category_id = c.id 
+    LEFT JOIN users u ON p.seller_id = u.id
+    ORDER BY p.created_at DESC
+  `),
+
+  getProductById: db.prepare(`
+    SELECT p.*, c.name as category_name, u.name as seller_name
+    FROM products p 
+    LEFT JOIN categories c ON p.category_id = c.id 
+    LEFT JOIN users u ON p.seller_id = u.id
+    WHERE p.id = ?
+  `),
+
+  getFeaturedProducts: db.prepare(`
+    SELECT p.*, c.name as category_name
+    FROM products p 
+    LEFT JOIN categories c ON p.category_id = c.id 
+    WHERE p.featured = 1 AND p.status = 'approved'
+    ORDER BY p.created_at DESC
+    LIMIT 6
+  `),
+
+  getPendingProducts: db.prepare(`
+    SELECT p.*, c.name as category_name, u.name as seller_name
+    FROM products p 
+    LEFT JOIN categories c ON p.category_id = c.id 
+    LEFT JOIN users u ON p.seller_id = u.id
+    WHERE p.status = 'pending'
+    ORDER BY p.created_at DESC
+  `),
+
+  createProduct: db.prepare(`
+    INSERT INTO products (name, description, price, category_id, image_url, seller_id, status) 
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `),
+
+  updateProductStatus: db.prepare(`
+    UPDATE products SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+  `),
+
+  // Orders
+  createOrder: db.prepare(`
+    INSERT INTO orders (user_id, total_amount, status, shipping_address) 
+    VALUES (?, ?, ?, ?)
+  `),
+
+  createOrderItem: db.prepare(`
+    INSERT INTO order_items (order_id, product_id, quantity, price) 
+    VALUES (?, ?, ?, ?)
+  `),
+
+  // Stats
+  getStats: db.prepare(`
+    SELECT 
+      (SELECT COUNT(*) FROM products) as total_products,
+      (SELECT COUNT(*) FROM categories) as total_categories,
+      (SELECT COUNT(*) FROM users) as total_users,
+      (SELECT COUNT(*) FROM orders) as total_orders,
+      (SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE status = 'completed') as total_revenue
+  `),
 }
 
-// Test connection on startup
-pool.on("connect", () => {
-  console.log("Connected to PostgreSQL database")
-})
-
-pool.on("error", (err) => {
-  console.error("Unexpected error on idle client", err)
-  process.exit(-1)
-})
-
-// Helper functions for database operations
-export const dbHelpers = {
-  // User operations
-  createUser: (email: string, passwordHash: string, name: string, role = "user") => {
-    const db = getSQLiteDatabase()
-    const stmt = db.prepare("INSERT INTO users (email, password_hash, name, role) VALUES (?, ?, ?, ?)")
-    return stmt.run(email, passwordHash, name, role)
-  },
-
-  getUserByEmail: (email: string) => {
-    const db = getSQLiteDatabase()
-    const stmt = db.prepare("SELECT * FROM users WHERE email = ?")
-    return stmt.get(email)
-  },
-
-  getUserById: (id: number) => {
-    const db = getSQLiteDatabase()
-    const stmt = db.prepare("SELECT * FROM users WHERE id = ?")
-    return stmt.get(id)
-  },
-
-  // Product operations
-  getAllProducts: (limit = 50, offset = 0) => {
-    const db = getSQLiteDatabase()
-    const stmt = db.prepare(`
-      SELECT p.*, c.name as category_name, u.name as seller_name 
-      FROM products p 
-      LEFT JOIN categories c ON p.category_id = c.id 
-      LEFT JOIN users u ON p.seller_id = u.id 
-      WHERE p.status = 'approved'
-      ORDER BY p.created_at DESC 
-      LIMIT ? OFFSET ?
-    `)
-    return stmt.all(limit, offset)
-  },
-
-  getFeaturedProducts: (limit = 6) => {
-    const db = getSQLiteDatabase()
-    const stmt = db.prepare(`
-      SELECT p.*, c.name as category_name 
-      FROM products p 
-      LEFT JOIN categories c ON p.category_id = c.id 
-      WHERE p.status = 'approved' AND p.featured = TRUE
-      ORDER BY p.created_at DESC 
-      LIMIT ?
-    `)
-    return stmt.all(limit)
-  },
-
-  getProductById: (id: number) => {
-    const db = getSQLiteDatabase()
-    const stmt = db.prepare(`
-      SELECT p.*, c.name as category_name, u.name as seller_name 
-      FROM products p 
-      LEFT JOIN categories c ON p.category_id = c.id 
-      LEFT JOIN users u ON p.seller_id = u.id 
-      WHERE p.id = ?
-    `)
-    return stmt.get(id)
-  },
-
-  searchProducts: (query: string, limit = 20) => {
-    const db = getSQLiteDatabase()
-    const stmt = db.prepare(`
-      SELECT p.*, c.name as category_name 
-      FROM products p 
-      LEFT JOIN categories c ON p.category_id = c.id 
-      WHERE p.status = 'approved' AND (
-        p.name LIKE ? OR 
-        p.description LIKE ? OR 
-        c.name LIKE ?
-      )
-      ORDER BY p.created_at DESC 
-      LIMIT ?
-    `)
-    const searchTerm = `%${query}%`
-    return stmt.all(searchTerm, searchTerm, searchTerm, limit)
-  },
-
-  // Category operations
-  getAllCategories: () => {
-    const db = getSQLiteDatabase()
-    const stmt = db.prepare("SELECT * FROM categories ORDER BY name")
-    return stmt.all()
-  },
-
-  // Admin operations
-  getPendingProducts: () => {
-    const db = getSQLiteDatabase()
-    const stmt = db.prepare(`
-      SELECT p.*, c.name as category_name, u.name as seller_name 
-      FROM products p 
-      LEFT JOIN categories c ON p.category_id = c.id 
-      LEFT JOIN users u ON p.seller_id = u.id 
-      WHERE p.status = 'pending'
-      ORDER BY p.created_at DESC
-    `)
-    return stmt.all()
-  },
-
-  approveProduct: (id: number) => {
-    const db = getSQLiteDatabase()
-    const stmt = db.prepare("UPDATE products SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-    return stmt.run("approved", id)
-  },
-
-  rejectProduct: (id: number) => {
-    const db = getSQLiteDatabase()
-    const stmt = db.prepare("UPDATE products SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
-    return stmt.run("rejected", id)
-  },
-
-  // Stats operations
-  getStats: () => {
-    const db = getSQLiteDatabase()
-    const totalProducts = db.prepare('SELECT COUNT(*) as count FROM products WHERE status = "approved"').get() as {
-      count: number
-    }
-    const totalUsers = db.prepare('SELECT COUNT(*) as count FROM users WHERE role = "user"').get() as { count: number }
-    const totalOrders = db.prepare("SELECT COUNT(*) as count FROM orders").get() as { count: number }
-    const totalRevenue = db
-      .prepare('SELECT COALESCE(SUM(total_amount), 0) as total FROM orders WHERE status != "cancelled"')
-      .get() as { total: number }
-
-    return {
-      totalProducts: totalProducts.count,
-      totalUsers: totalUsers.count,
-      totalOrders: totalOrders.count,
-      totalRevenue: totalRevenue.total,
-    }
-  },
+// Export functions for database operations
+export const getProducts = () => db.prepare("SELECT * FROM products").all()
+export const getCategories = () => db.prepare("SELECT * FROM categories").all()
+export const getProductById = (id: number) => db.prepare("SELECT * FROM products WHERE id = ?").get(id)
+export const getUserByEmail = (email: string) => db.prepare("SELECT * FROM users WHERE email = ?").get(email)
+export const createUser = (email: string, passwordHash: string, name: string, role = "user") => {
+  return db
+    .prepare("INSERT INTO users (email, password_hash, name, role) VALUES (?, ?, ?, ?)")
+    .run(email, passwordHash, name, role)
+}
+export const addProduct = (
+  name: string,
+  description: string,
+  price: number,
+  category_id: number,
+  image_url: string,
+  stock_quantity: number,
+  featured: boolean,
+) => {
+  return db
+    .prepare(
+      "INSERT INTO products (name, description, price, category_id, image_url, stock_quantity, featured) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    )
+    .run(name, description, price, category_id, image_url, stock_quantity, featured)
+}
+export const updateProductStatus = (id: number, status: string) => {
+  return db.prepare("UPDATE products SET status = ? WHERE id = ?").run(status, id)
+}
+export const getRecentListings = () => db.prepare("SELECT * FROM products ORDER BY created_at DESC LIMIT 5").all()
+export const getTotalRevenue = () =>
+  db.prepare('SELECT SUM(price * stock_quantity) as totalRevenue FROM products WHERE status = "approved"').get()
+    .totalRevenue
+export const getStats = () => {
+  const totalProducts = db.prepare("SELECT COUNT(*) as count FROM products").get().count
+  const totalCategories = db.prepare("SELECT COUNT(*) as count FROM categories").get().count
+  const totalUsers = db.prepare("SELECT COUNT(*) as count FROM users").get().count
+  return { totalProducts, totalCategories, totalUsers }
 }
 
-// Initialize database on import
-if (process.env.NODE_ENV !== "test") {
-  getSQLiteDatabase()
-}
+// Ensure database is initialized on module load
+initDatabase()
 
-export default getSQLiteDatabase
+export default db

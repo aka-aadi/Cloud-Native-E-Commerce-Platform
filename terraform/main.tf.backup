@@ -19,13 +19,6 @@ variable "project_name" {
   default     = "legato-free"
 }
 
-variable "port" {
-  description = "Port number for the application"
-  type        = number
-  default     = 8080  # or whatever value you want
-}
-
-
 variable "aws_region" {
   description = "AWS region"
   type        = string
@@ -179,7 +172,7 @@ resource "aws_s3_bucket" "assets" {
     Name        = "${var.project_name}-assets"
     Environment = var.environment
     Project     = var.project_name
-    Cost        = "Free"
+    Cost        = "Free (5GB)"
   }
 }
 
@@ -260,7 +253,7 @@ resource "aws_instance" "web" {
       Name        = "${var.project_name}-root-volume"
       Environment = var.environment
       Project     = var.project_name
-      Cost        = "Free"
+      Cost        = "Free (8GB of 30GB)"
     }
   }
 
@@ -268,14 +261,13 @@ resource "aws_instance" "web" {
     project_name = var.project_name
     s3_bucket    = aws_s3_bucket.assets.bucket
     aws_region   = var.aws_region
-    PORT         = var.port
   }))
 
   tags = {
     Name        = "${var.project_name}-web-server"
     Environment = var.environment
     Project     = var.project_name
-    Cost        = "Free"
+    Cost        = "Free (750 hours/month)"
   }
 }
 
@@ -288,7 +280,7 @@ resource "aws_eip" "web" {
     Name        = "${var.project_name}-eip"
     Environment = var.environment
     Project     = var.project_name
-    Cost        = "Free"
+    Cost        = "Free (when attached)"
   }
 
   depends_on = [aws_internet_gateway.main]

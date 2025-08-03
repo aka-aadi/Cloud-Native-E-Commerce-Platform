@@ -1,7 +1,5 @@
 #!/bin/bash
 
-# Zero Cost AWS E-commerce Platform Deployment Script
-# Uses ONLY AWS Free Tier resources - $0.00/month
 set -e
 
 # Colors for output
@@ -43,10 +41,6 @@ if ! command_exists terraform; then
     MISSING_DEPS+=("Terraform")
 fi
 
-if ! command_exists node; then
-    MISSING_DEPS+=("Node.js")
-fi
-
 if [ ${#MISSING_DEPS[@]} -ne 0 ]; then
     echo -e "${RED}❌ Missing dependencies: ${MISSING_DEPS[*]}${NC}"
     echo "Please install the missing dependencies and try again."
@@ -65,12 +59,6 @@ fi
 
 AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 echo -e "${GREEN}✅ AWS credentials verified (Account: ${AWS_ACCOUNT_ID})${NC}"
-
-# Check if account is eligible for free tier
-echo -e "${YELLOW}🔍 Checking Free Tier eligibility...${NC}"
-ACCOUNT_CREATION_DATE=$(aws iam get-account-summary --query 'SummaryMap.AccountMFAEnabled' --output text 2>/dev/null || echo "unknown")
-echo -e "${GREEN}✅ Account appears eligible for Free Tier${NC}"
-echo -e "${CYAN}💡 Free Tier is valid for 12 months from account creation${NC}"
 
 # Create SSH key pair if it doesn't exist
 echo -e "${YELLOW}🔑 Setting up SSH key pair...${NC}"
@@ -102,46 +90,13 @@ echo -e "${BLUE}🌐 Data Transfer: 15 GB outbound per month${NC}"
 echo -e "${BLUE}🔗 VPC: Always free (subnets, security groups, etc.)${NC}"
 echo ""
 
-# Clean up node_modules and package-lock.json to avoid dependency issues
-echo -e "${YELLOW}🧹 Cleaning up dependencies...${NC}"
-if [ -d "node_modules" ]; then
-    rm -rf node_modules
-    echo -e "${GREEN}✅ Removed old node_modules${NC}"
-fi
-
-if [ -f "package-lock.json" ]; then
-    rm -f package-lock.json
-    echo -e "${GREEN}✅ Removed old package-lock.json${NC}"
-fi
-
-# Install dependencies with specific flags for SQLite
-echo -e "${YELLOW}📦 Installing dependencies (SQLite optimized)...${NC}"
-
-# Install build tools for SQLite compilation
-if command_exists apt-get; then
-    echo -e "${YELLOW}Installing build dependencies...${NC}"
-    sudo apt-get update -qq
-    sudo apt-get install -y build-essential python3-dev
-elif command_exists yum; then
-    echo -e "${YELLOW}Installing build dependencies...${NC}"
-    sudo yum groupinstall -y "Development Tools"
-    sudo yum install -y python3-devel
-fi
-
-# Install npm dependencies
-npm install --no-optional --production=false
-
-echo -e "${GREEN}✅ Dependencies installed successfully${NC}"
+# Skip npm install for now - we'll handle dependencies on the server
+echo -e "${YELLOW}⏭️  Skipping local npm install (will install on server)${NC}"
 
 # Create data directory for SQLite
 echo -e "${YELLOW}📁 Setting up SQLite database directory...${NC}"
 mkdir -p data
 echo -e "${GREEN}✅ Database directory created${NC}"
-
-# Build the application
-echo -e "${YELLOW}🏗️  Building application...${NC}"
-npm run build
-echo -e "${GREEN}✅ Application built successfully${NC}"
 
 # Create S3 bucket for Terraform state
 echo -e "${YELLOW}🪣 Setting up Terraform state bucket...${NC}"
@@ -177,7 +132,6 @@ fi
 # Update Terraform backend configuration
 echo -e "${YELLOW}🔧 Updating Terraform configuration...${NC}"
 sed -i.bak "s/legato-terraform-state/${TERRAFORM_BUCKET}/g" terraform/main.tf
-sed -i.bak "s/ap-south-1/${AWS_REGION}/g" terraform/main.tf
 echo -e "${GREEN}✅ Terraform configuration updated${NC}"
 
 # Initialize Terraform
@@ -310,7 +264,7 @@ Environment: ${ENVIRONMENT}
 - S3 for static assets
 - Nginx reverse proxy
 - PM2 process manager
-- Next.js 14 application
+- Express.js server
 
 🎯 Perfect For:
 - Learning AWS and web development
@@ -339,7 +293,7 @@ Environment: ${ENVIRONMENT}
 🗄️ Database Information:
 - Type: SQLite (better-sqlite3)
 - Location: /opt/legato/data/legato.db
-- Backup: Automatic daily backups to S3
+- Backup: Automatic daily backups to local storage
 - Admin Login: admin@legato.com / admin123
 EOF
 
@@ -370,8 +324,7 @@ echo -e "${GREEN}🚀 Your application features:${NC}"
 echo "   • Complete e-commerce platform with product catalog"
 echo "   • SQLite database with pre-seeded data"
 echo "   • Admin dashboard for product management"
-echo "   • Responsive design with Tailwind CSS"
-echo "   • Health monitoring and auto-restart"
+echo "   • RESTful API with health monitoring"
 echo "   • S3 integration for file uploads"
 echo "   • Production-ready with Nginx and PM2"
 echo ""
