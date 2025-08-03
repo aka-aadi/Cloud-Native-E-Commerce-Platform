@@ -1,185 +1,78 @@
-terraform {
-  required_version = ">= 1.0"
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-  }
-}
-
-provider "aws" {
-  region = var.aws_region
-}
-
-# Variables
-variable "project_name" {
-  description = "Name of the project"
-  type        = string
-  default     = "legato-free"
-}
-
-variable "port" {
-  description = "Port number for the application"
-  type        = number
-  default     = 8080  # or whatever value you want
-}
-
-
-variable "aws_region" {
-  description = "AWS region"
-  type        = string
-  default     = "us-east-1"
-}
-
-variable "environment" {
-  description = "Environment name"
-  type        = string
-  default     = "development"
-}
-
-variable "key_name" {
-  description = "EC2 Key Pair name"
-  type        = string
-}
-
-# Data sources
-data "aws_availability_zones" "available" {
-  state = "available"
-}
-
-# VPC (Always Free)
-resource "aws_vpc" "main" {
-  cidr_block           = "10.0.0.0/16"
-  enable_dns_hostnames = true
-  enable_dns_support   = true
-
+resource "aws_instance" "web" {
+  ami           = "ami-0abcdef1234567890" # Replace with a valid Amazon Linux 2 AMI for your region
+  instance_type = "t2.micro"
+  key_name      = aws_key_pair.deployer_key.key_name
+  vpc_security_group_ids = [aws_security_group.web_sg.id]
+  user_data     = templatefile("${path.module}/app-userdata.sh", {
+    project_name = var.project_name
+    s3_bucket    = aws_s3_bucket.app_bucket.id
+    aws_region   = var.aws_region
+    PORT         = var.app_port
+  })
   tags = {
-    Name        = "${var.project_name}-vpc"
-    Environment = var.environment
-    Project     = var.project_name
-    Cost        = "Free"
+    Name = "${var.project_name}-web-server"
   }
 }
 
-# Internet Gateway (Always Free)
-resource "aws_internet_gateway" "main" {
-  vpc_id = aws_vpc.main.id
-
+resource "aws_eip" "web_eip" {
+  instance = aws_instance.web.id
+  vpc      = true
   tags = {
-    Name        = "${var.project_name}-igw"
-    Environment = var.environment
-    Project     = var.project_name
-    Cost        = "Free"
+    Name = "${var.project_name}-web-eip"
   }
 }
 
-# Public Subnet (Always Free)
-resource "aws_subnet" "public" {
-  vpc_id                  = aws_vpc.main.id
-  cidr_block              = "10.0.1.0/24"
-  availability_zone       = data.aws_availability_zones.available.names[0]
-  map_public_ip_on_launch = true
+resource "aws_security_group" "web_sg" {
+  name        = "${var.project_name}-web-sg"
+  description = "Allow HTTP, HTTPS, and SSH inbound traffic"
+  vpc_id      = var.vpc_id # Assuming vpc_id is passed as a variable
 
-  tags = {
-    Name        = "${var.project_name}-public-subnet"
-    Environment = var.environment
-    Project     = var.project_name
-    Cost        = "Free"
-  }
-}
-
-# Route Table (Always Free)
-resource "aws_route_table" "public" {
-  vpc_id = aws_vpc.main.id
-
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.main.id
-  }
-
-  tags = {
-    Name        = "${var.project_name}-public-rt"
-    Environment = var.environment
-    Project     = var.project_name
-    Cost        = "Free"
-  }
-}
-
-# Route Table Association (Always Free)
-resource "aws_route_table_association" "public" {
-  subnet_id      = aws_subnet.public.id
-  route_table_id = aws_route_table.public.id
-}
-
-# Security Group (Always Free)
-resource "aws_security_group" "web" {
-  name_prefix = "${var.project_name}-web-"
-  vpc_id      = aws_vpc.main.id
-  description = "Security group for web server"
-
-  # HTTP
   ingress {
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
-    description = "HTTP"
   }
 
-  # HTTPS
   ingress {
     from_port   = 443
     to_port     = 443
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
-    description = "HTTPS"
   }
 
-  # SSH
   ingress {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "SSH"
+    cidr_blocks = ["0.0.0.0/0"] # Restrict this in production
   }
 
-  # Next.js dev server (for testing)
+  # Allow traffic on the application port (e.g., 3000 or 8080) from localhost (Nginx)
   ingress {
-    from_port   = 3000
-    to_port     = 3000
+    from_port   = var.app_port
+    to_port     = var.app_port
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "Next.js"
+    cidr_blocks = ["127.0.0.1/32"] # Only allow from localhost for internal communication
   }
 
-  # All outbound traffic
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
-    description = "All outbound"
   }
 
   tags = {
-    Name        = "${var.project_name}-web-sg"
-    Environment = var.environment
-    Project     = var.project_name
-    Cost        = "Free"
+    Name = "${var.project_name}-web-sg"
   }
 }
 
-# S3 Bucket for static assets (5GB Free)
-resource "aws_s3_bucket" "assets" {
+resource "aws_s3_bucket" "app_bucket" {
   bucket = "${var.project_name}-assets-${random_string.bucket_suffix.result}"
-
+  acl    = "private" # Keep private, accessed by EC2 instance
   tags = {
-    Name        = "${var.project_name}-assets"
-    Environment = var.environment
-    Project     = var.project_name
-    Cost        = "Free"
+    Name = "${var.project_name}-app-assets"
   }
 }
 
@@ -187,158 +80,98 @@ resource "random_string" "bucket_suffix" {
   length  = 8
   special = false
   upper   = false
+  numeric = true
 }
 
-# S3 Bucket Public Access Block
-resource "aws_s3_bucket_public_access_block" "assets" {
-  bucket = aws_s3_bucket.assets.id
-
-  block_public_acls       = false
-  block_public_policy     = false
-  ignore_public_acls      = false
-  restrict_public_buckets = false
-}
-
-# S3 Bucket Policy for public read access
-resource "aws_s3_bucket_policy" "assets" {
-  bucket = aws_s3_bucket.assets.id
-  depends_on = [aws_s3_bucket_public_access_block.assets]
-
-  policy = jsonencode({
-    Version = "2012-10-17"
+resource "aws_iam_role" "ec2_s3_access_role" {
+  name = "${var.project_name}-ec2-s3-access-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17",
     Statement = [
       {
-        Sid       = "PublicReadGetObject"
-        Effect    = "Allow"
-        Principal = "*"
-        Action    = "s3:GetObject"
-        Resource  = "${aws_s3_bucket.assets.arn}/*"
-      }
-    ]
+        Action = "sts:AssumeRole",
+        Effect = "Allow",
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        },
+      },
+    ],
   })
 }
 
-# S3 Bucket versioning
-resource "aws_s3_bucket_versioning" "assets" {
-  bucket = aws_s3_bucket.assets.id
-  versioning_configuration {
-    status = "Enabled"
-  }
+resource "aws_iam_policy" "s3_read_policy" {
+  name        = "${var.project_name}-s3-read-policy"
+  description = "IAM policy for EC2 to read from S3 bucket"
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Action = [
+          "s3:GetObject",
+          "s3:ListBucket"
+        ],
+        Effect   = "Allow",
+        Resource = [
+          aws_s3_bucket.app_bucket.arn,
+          "${aws_s3_bucket.app_bucket.arn}/*"
+        ],
+      },
+    ],
+  })
 }
 
-# Get latest Amazon Linux 2 AMI
-data "aws_ami" "amazon_linux" {
-  most_recent = true
-  owners      = ["amazon"]
-
-  filter {
-    name   = "name"
-    values = ["amzn2-ami-hvm-*-x86_64-gp2"]
-  }
-
-  filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
-  }
+resource "aws_iam_role_policy_attachment" "attach_s3_read_policy" {
+  role       = aws_iam_role.ec2_s3_access_role.name
+  policy_arn = aws_iam_policy.s3_read_policy.arn
 }
 
-# EC2 Instance (t2.micro - 750 hours/month Free)
-resource "aws_instance" "web" {
-  ami                    = data.aws_ami.amazon_linux.id
-  instance_type          = "t2.micro"  # Free tier eligible
-  key_name               = var.key_name
-  vpc_security_group_ids = [aws_security_group.web.id]
-  subnet_id              = aws_subnet.public.id
-
-  # EBS volume (8GB within 30GB free tier limit)
-  root_block_device {
-    volume_type = "gp2"
-    volume_size = 8
-    encrypted   = true
-
-    tags = {
-      Name        = "${var.project_name}-root-volume"
-      Environment = var.environment
-      Project     = var.project_name
-      Cost        = "Free"
-    }
-  }
-
-  user_data = base64encode(templatefile("${path.module}/app-userdata.sh", {
-    project_name = var.project_name
-    s3_bucket    = aws_s3_bucket.assets.bucket
-    aws_region   = var.aws_region
-    PORT         = var.port
-  }))
-
-  tags = {
-    Name        = "${var.project_name}-web-server"
-    Environment = var.environment
-    Project     = var.project_name
-    Cost        = "Free"
-  }
+resource "aws_iam_instance_profile" "ec2_profile" {
+  name = "${var.project_name}-ec2-profile"
+  role = aws_iam_role.ec2_s3_access_role.name
 }
 
-# Elastic IP (Free when attached)
-resource "aws_eip" "web" {
-  instance = aws_instance.web.id
-  domain   = "vpc"
-
-  tags = {
-    Name        = "${var.project_name}-eip"
-    Environment = var.environment
-    Project     = var.project_name
-    Cost        = "Free"
-  }
-
-  depends_on = [aws_internet_gateway.main]
+resource "aws_key_pair" "deployer_key" {
+  key_name   = "${var.project_name}-deployer-key"
+  public_key = file("~/.ssh/id_rsa.pub") # Ensure this path is correct for your public key
 }
 
-# Outputs
-output "application_url" {
-  description = "URL of the deployed application"
-  value       = "http://${aws_eip.web.public_ip}"
+variable "project_name" {
+  description = "Name of the e-commerce project"
+  type        = string
+  default     = "legato-free"
 }
 
-output "application_ip" {
-  description = "Public IP of the application"
-  value       = aws_eip.web.public_ip
+variable "aws_region" {
+  description = "AWS region to deploy resources"
+  type        = string
+  default     = "us-east-1"
 }
 
-output "ssh_command" {
-  description = "SSH command to connect to the instance"
-  value       = "ssh -i ~/.ssh/${var.key_name} ec2-user@${aws_eip.web.public_ip}"
+variable "vpc_id" {
+  description = "ID of the VPC to deploy into"
+  type        = string
+  # You might need to set a default here or fetch it dynamically
+  # For example, data "aws_vpc" "default" { default = true }
+  # default = data.aws_vpc.default.id
+}
+
+variable "app_port" {
+  description = "Port on which the Node.js application will listen"
+  type        = number
+  default     = 3000 # Default port for the Express app
+}
+
+output "app_public_ip" {
+  description = "The public IP address of the web server"
+  value       = aws_eip.web_eip.public_ip
+}
+
+output "app_url" {
+  description = "The URL to access the deployed application"
+  value       = "http://${aws_eip.web_eip.public_ip}"
 }
 
 output "s3_bucket_name" {
-  description = "Name of the S3 bucket for assets"
-  value       = aws_s3_bucket.assets.bucket
-}
-
-output "health_check_url" {
-  description = "Health check endpoint"
-  value       = "http://${aws_eip.web.public_ip}/api/health"
-}
-
-output "instance_id" {
-  description = "EC2 instance ID"
-  value       = aws_instance.web.id
-}
-
-output "vpc_id" {
-  description = "VPC ID"
-  value       = aws_vpc.main.id
-}
-
-output "cost_summary" {
-  description = "Cost breakdown for all resources"
-  value = {
-    ec2_instance    = "FREE (t2.micro - 750 hours/month)"
-    ebs_storage     = "FREE (8GB of 30GB monthly allowance)"
-    s3_bucket       = "FREE (5GB storage allowance)"
-    elastic_ip      = "FREE (when attached to running instance)"
-    vpc_networking  = "FREE (always free)"
-    data_transfer   = "FREE (15GB outbound per month)"
-    total_monthly   = "$0.00"
-  }
+  description = "The name of the S3 bucket created for application assets"
+  value       = aws_s3_bucket.app_bucket.id
 }
