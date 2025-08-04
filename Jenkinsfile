@@ -2,74 +2,66 @@ pipeline {
     agent any
 
     environment {
-        AWS_REGION = 'us-east-1' // IMPORTANT: Your AWS region
-        AWS_ACCOUNT_ID = '619577151605' // IMPORTANT: Your AWS Account ID
-        ECR_REPOSITORY_NAME = 'legato-ecommerce-app' // IMPORTANT: Name of your ECR repository
-        ECR_REPO_URL = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY_NAME}"
-        EC2_INSTANCE_IP = '34.229.99.59' // IMPORTANT: Public IP of your EC2 instance (from Terraform output)
-        EC2_SSH_USER = 'ec2-user' // Default user for Amazon Linux AMIs
-        SSH_CREDENTIALS_ID = 'your-ssh-key-id' // IMPORTANT: Jenkins credential ID for SSH key
-        AWS_CREDENTIALS_ID = 'your-aws-credentials-id' // IMPORTANT: Jenkins credential ID for AWS access key/secret key
+        AWS_REGION = 'us-east-1'
+        ECR_REPO_NAME = 'cloud-native-e-commerce-platform'
+        ECS_CLUSTER_NAME = 'ecommerce-cluster'
+        ECS_SERVICE_NAME = 'ecommerce-service'
+        DB_SECRET_NAME = 'ecommerce-db-credentials' // Name of the secret in AWS Secrets Manager
     }
 
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/aka-aadi/Cloud-Native-E-Commerce-Platform.git' // IMPORTANT: Replace with your Git repository URL
+                git branch: 'main', url: 'https://github.com/aka-aadi/Cloud-Native-E-Commerce-Platform.git'
             }
         }
 
         stage('Build Docker Image') {
             steps {
                 script {
-                    sh "docker build -t ${ECR_REPOSITORY_NAME}:${env.BUILD_NUMBER} ."
-                    sh "docker tag ${ECR_REPOSITORY_NAME}:${env.BUILD_NUMBER} ${ECR_REPO_URL}:${env.BUILD_NUMBER}"
-                    sh "docker tag ${ECR_REPOSITORY_NAME}:${env.BUILD_NUMBER} ${ECR_REPO_URL}:latest"
+                    // Login to ECR
+                    sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${env.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+                    
+                    // Build Docker image
+                    sh "docker build -t ${ECR_REPO_NAME} ."
+                    
+                    // Tag Docker image
+                    sh "docker tag ${ECR_REPO_NAME}:latest ${env.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_NAME}:latest"
                 }
             }
         }
 
         stage('Push Docker Image to ECR') {
             steps {
-                withCredentials([aws(credentialsId: env.AWS_CREDENTIALS_ID, roleBindings: [])]) {
-                    script {
-                        sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-                        sh "docker push ${ECR_REPO_URL}:${env.BUILD_NUMBER}"
-                        sh "docker push ${ECR_REPO_URL}:latest"
-                    }
+                script {
+                    sh "docker push ${env.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_NAME}:latest"
                 }
             }
         }
 
-        stage('Deploy to EC2') {
+        stage('Deploy to ECS') {
             steps {
-                withCredentials([sshUserPrivateKey(credentialsId: env.SSH_CREDENTIALS_ID, keyFileVariable: 'SSH_KEY')]) {
-                    script {
-                        sh """
-                            ssh -o StrictHostKeyChecking=no -i \$SSH_KEY ${EC2_SSH_USER}@${EC2_INSTANCE_IP} << 'EOF'
-                                # Login to ECR on EC2 instance
-                                aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+                script {
+                    // Get DB credentials from AWS Secrets Manager
+                    def dbCredentials = sh(returnStdout: true, script: "aws secretsmanager get-secret-value --secret-id ${DB_SECRET_NAME} --query SecretString --output text --region ${AWS_REGION}").trim()
+                    
+                    // Parse DB credentials (assuming JSON format)
+                    def dbUser = new groovy.json.JsonSlurper().parseText(dbCredentials).username
+                    def dbPassword = new groovy.json.JsonSlurper().parseText(dbCredentials).password
+                    def dbHost = new groovy.json.JsonSlurper().parseText(dbCredentials).host
+                    def dbPort = new groovy.json.JsonSlurper().parseText(dbCredentials).port
+                    def dbName = new groovy.json.JsonSlurper().parseText(dbCredentials).dbname
 
-                                # Pull the latest image
-                                docker pull ${ECR_REPO_URL}:latest
+                    // Construct DATABASE_URL for Next.js application
+                    def databaseUrl = "postgresql://${dbUser}:${dbPassword}@${dbHost}:${dbPort}/${dbName}"
 
-                                # Stop and remove old container if it exists
-                                docker stop legato-app || true
-                                docker rm legato-app || true
-
-                                # Run the new container
-                                docker run -d \
-                                  --name legato-app \
-                                  -p 80:3000 \
-                                  --restart always \
-                                  --env-file /opt/legato/.env \
-                                  ${ECR_REPO_URL}:latest
-
-                                # Optional: Run database migrations (if your app has them)
-                                # Example: docker run --rm --env-file /opt/legato/.env ${ECR_REPO_URL}:latest npx prisma migrate deploy
-                            EOF
-                        """
-                    }
+                    // Update ECS service with new image and environment variables
+                    sh """
+                    aws ecs update-service --cluster ${ECS_CLUSTER_NAME} --service ${ECS_SERVICE_NAME} --force-new-deployment \
+                    --task-definition $(aws ecs describe-task-definition --task-definition ${ECS_SERVICE_NAME} --query 'taskDefinition.taskDefinitionArn' --output text) \
+                    --container-overrides '[{"name":"${ECR_REPO_NAME}","environment":[{"name":"DATABASE_URL","value":"${databaseUrl}"}]}]' \
+                    --region ${AWS_REGION}
+                    """
                 }
             }
         }
@@ -77,13 +69,7 @@ pipeline {
 
     post {
         always {
-            echo "Pipeline finished."
-        }
-        success {
-            echo "Deployment successful!"
-        }
-        failure {
-            echo "Deployment failed!"
+            cleanWs()
         }
     }
 }

@@ -4,92 +4,37 @@ import { db } from "@/lib/db"
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
-    const query = searchParams.get("q")
-    const type = searchParams.get("type") || "all"
-    const limit = Number.parseInt(searchParams.get("limit") || "20")
+    const query = searchParams.get("query")
 
     if (!query) {
-      return NextResponse.json({ error: "Search query is required" }, { status: 400 })
+      return NextResponse.json({ results: [] })
     }
 
-    const results: any = {}
-    const searchTerm = `%${query}%`
+    const searchQuery = `
+      SELECT 
+        id,
+        name,
+        brand,
+        price / 100 as price,
+        images
+      FROM products
+      WHERE status = 'approved' AND (
+        name ILIKE $1 OR 
+        description ILIKE $1 OR 
+        brand ILIKE $1
+      )
+      LIMIT 10
+    `
+    const result = await db.query(searchQuery, [`%${query}%`])
 
-    // Search products
-    if (type === "all" || type === "products") {
-      const productsQuery = `
-        SELECT 
-          p.id,
-          p.name,
-          p.description,
-          p.price,
-          p.image_url as "imageUrl",
-          c.name as category,
-          'product' as type
-        FROM products p
-        JOIN categories c ON p.category_id = c.id
-        WHERE 
-          p.status = 'active' AND
-          (p.name ILIKE $1 OR p.description ILIKE $1 OR c.name ILIKE $1)
-        ORDER BY 
-          CASE WHEN p.name ILIKE $1 THEN 1
-               WHEN c.name ILIKE $1 THEN 2
-               ELSE 3
-          END
-        LIMIT $2
-      `
+    const products = result.rows.map((row) => ({
+      ...row,
+      images: typeof row.images === "string" ? JSON.parse(row.images) : row.images,
+    }))
 
-      const productsResult = await db.query(productsQuery, [searchTerm, limit])
-      results.products = productsResult.rows
-    }
-
-    // Search categories
-    if (type === "all" || type === "categories") {
-      const categoriesQuery = `
-        SELECT 
-          id,
-          name,
-          slug,
-          image_url as "imageUrl",
-          'category' as type
-        FROM categories
-        WHERE name ILIKE $1
-        ORDER BY name
-        LIMIT $2
-      `
-
-      const categoriesResult = await db.query(categoriesQuery, [searchTerm, limit])
-      results.categories = categoriesResult.rows
-    }
-
-    // Search sellers
-    if (type === "all" || type === "sellers") {
-      const sellersQuery = `
-        SELECT 
-          id,
-          name,
-          location,
-          avatar_url as "avatarUrl",
-          rating,
-          'seller' as type
-        FROM users
-        WHERE 
-          role = 'seller' AND
-          (name ILIKE $1 OR location ILIKE $1)
-        ORDER BY rating DESC
-        LIMIT $2
-      `
-
-      const sellersResult = await db.query(sellersQuery, [searchTerm, limit])
-      results.sellers = sellersResult.rows
-    }
-
-    return NextResponse.json({
-      query,
-      results,
-    })
+    return NextResponse.json({ results: products })
   } catch (error) {
-    console.error("Error searching:", error)
+    console.error("Error during search:", error)
     return NextResponse.json({ error: "Failed to perform search" }, { status: 500 })
   }
 }

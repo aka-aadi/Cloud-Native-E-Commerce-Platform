@@ -1,85 +1,110 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
+import { v4 as uuidv4 } from "uuid"
 
 export async function POST(request: Request) {
   try {
     const body = await request.json()
     const {
-      title,
+      name,
       brand,
-      category,
-      condition,
-      description,
       price,
       originalPrice,
-      location,
-      negotiable,
-      shipping,
+      condition,
+      description,
       specifications,
       features,
       images,
+      shippingInfo,
       warranty,
       returnPolicy,
       contactName,
       contactMethod,
       contactDetails,
       inStock,
+      location,
+      categoryId,
+      sellerId, // Assuming sellerId is passed from authenticated user
     } = body
 
-    // Insert product into database with pending status
-    const query = `
+    // Basic validation
+    if (!name || !price || !description || !categoryId || !sellerId) {
+      return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
+    }
+
+    const productId = uuidv4()
+    const parsedPrice = Math.round(Number.parseFloat(price) * 100) // Store price in cents
+    const parsedOriginalPrice = originalPrice ? Math.round(Number.parseFloat(originalPrice) * 100) : null
+
+    const insertQuery = `
       INSERT INTO products (
-        name, brand, description, price, original_price, condition, 
-        category_id, location, negotiable, shipping_info, specifications, 
-        features, images, warranty, return_policy, contact_name, 
-        contact_method, contact_details, in_stock, status, created_at
-      ) VALUES (
-        $1, $2, $3, $4, $5, $6, 
-        (SELECT id FROM categories WHERE LOWER(name) = LOWER($7) LIMIT 1),
-        $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, 'pending', NOW()
-      )
-      RETURNING id, name, status
+        id,
+        name,
+        brand,
+        price,
+        original_price,
+        condition,
+        description,
+        specifications,
+        features,
+        images,
+        shipping_info,
+        warranty,
+        return_policy,
+        contact_name,
+        contact_method,
+        contact_details,
+        in_stock,
+        location,
+        category_id,
+        seller_id,
+        status,
+        created_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, NOW())
+      RETURNING id
     `
 
-    const result = await db.query(query, [
-      title,
+    const values = [
+      productId,
+      name,
       brand,
-      description,
-      price * 100, // Convert to paise
-      originalPrice ? originalPrice * 100 : null,
+      parsedPrice,
+      parsedOriginalPrice,
       condition,
-      category,
-      location,
-      negotiable,
-      JSON.stringify(shipping),
+      description,
       JSON.stringify(specifications),
       JSON.stringify(features),
       JSON.stringify(images),
-      warranty || null,
-      returnPolicy || null,
+      JSON.stringify(shippingInfo),
+      warranty,
+      returnPolicy,
       contactName,
       contactMethod,
       contactDetails,
       inStock,
-    ])
+      location,
+      categoryId,
+      sellerId,
+      "pending", // New products are pending approval
+    ]
 
-    const product = result.rows[0]
+    const result = await db.query(insertQuery, values)
 
     // Log the submission for admin review
     await db.query(
       `INSERT INTO admin_notifications (type, title, message, data, created_at) 
-       VALUES ('new_product', $1, $2, $3, NOW())`,
+       VALUES ('new_product_submission', $1, $2, $3, NOW())`,
       [
-        "New Product Submission",
-        `New product "${title}" submitted for review`,
-        JSON.stringify({ productId: product.id, seller: contactName }),
+        "New Product Submitted",
+        `A new product "${name}" has been submitted for review.`,
+        JSON.stringify({ productId: productId, sellerId: sellerId }),
       ],
     )
 
     return NextResponse.json({
       success: true,
-      message: "Product submitted successfully for review",
-      productId: product.id,
+      productId: result.rows[0].id,
+      message: "Product submitted successfully for review!",
     })
   } catch (error) {
     console.error("Error submitting product:", error)

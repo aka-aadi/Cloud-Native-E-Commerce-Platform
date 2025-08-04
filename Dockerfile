@@ -1,17 +1,17 @@
-# Use a lightweight Node.js image as the base
-FROM node:20-alpine AS base
+# Use the official Node.js 18 image as the base image
+FROM node:18-alpine AS base
 
 # Set working directory
 WORKDIR /app
 
-# Install pnpm
+# Install pnpm globally
 RUN npm install -g pnpm
 
 # Copy package.json and pnpm-lock.yaml to leverage Docker cache
 COPY package.json pnpm-lock.yaml ./
 
-# Install dependencies
-RUN pnpm install --no-frozen-lockfile
+# Install dependencies using pnpm
+RUN pnpm install --prod
 
 # Copy the rest of the application code
 COPY . .
@@ -20,7 +20,7 @@ COPY . .
 RUN pnpm build
 
 # Production stage
-FROM node:20-alpine AS runner
+FROM node:18-alpine AS runner
 
 WORKDIR /app
 
@@ -31,12 +31,8 @@ COPY --from=base /app/.next ./.next
 COPY --from=base /app/node_modules ./node_modules
 COPY --from=base /app/package.json ./package.json
 
-# Expose the port Next.js runs on
+# Expose the port the application will run on
 EXPOSE 3000
-
-# Set environment variables for Next.js
-ENV NODE_ENV=production
-ENV PORT=3000
 
 # Command to run the application
 CMD ["pnpm", "start"]

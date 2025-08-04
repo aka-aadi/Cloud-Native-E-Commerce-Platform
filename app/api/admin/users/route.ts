@@ -7,21 +7,13 @@ export async function GET() {
 
     const result = await client.query(`
       SELECT 
-        u.id,
-        u.name,
-        u.email,
-        u.user_type,
-        u.status,
-        u.created_at::date as joined,
-        u.city,
-        u.state,
-        COUNT(p.id) as listings_count
-      FROM users u
-      LEFT JOIN products p ON u.id = p.seller_id
-      WHERE u.email != 'admin@legato.com'
-      GROUP BY u.id, u.name, u.email, u.user_type, u.status, u.created_at, u.city, u.state
-      ORDER BY u.created_at DESC
-      LIMIT 20
+        id,
+        name,
+        email,
+        role,
+        created_at::date as created_at
+      FROM users
+      ORDER BY created_at DESC
     `)
 
     client.release()
@@ -30,11 +22,8 @@ export async function GET() {
       id: row.id,
       name: row.name,
       email: row.email,
-      type: row.user_type.charAt(0).toUpperCase() + row.user_type.slice(1),
-      listings: Number.parseInt(row.listings_count) || 0,
-      status: row.status.charAt(0).toUpperCase() + row.status.slice(1),
-      joined: new Date(row.joined).toLocaleDateString("en-IN"),
-      location: row.city && row.state ? `${row.city}, ${row.state}` : "Not specified",
+      role: row.role,
+      createdAt: new Date(row.created_at).toLocaleDateString("en-IN"),
     }))
 
     return NextResponse.json(users)

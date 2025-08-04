@@ -5,132 +5,118 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     const category = searchParams.get("category")
-    const condition = searchParams.get("condition")
     const minPrice = searchParams.get("minPrice")
     const maxPrice = searchParams.get("maxPrice")
+    const condition = searchParams.get("condition")
+    const sortBy = searchParams.get("sortBy")
     const search = searchParams.get("search")
-    const limit = Number.parseInt(searchParams.get("limit") || "50")
-    const offset = Number.parseInt(searchParams.get("offset") || "0")
+    const page = Number.parseInt(searchParams.get("page") || "1")
+    const limit = Number.parseInt(searchParams.get("limit") || "10")
+    const offset = (page - 1) * limit
 
     let query = `
       SELECT 
         p.id,
         p.name,
-        p.description,
+        p.brand,
         p.price / 100 as price,
         p.original_price / 100 as "originalPrice",
+        p.images,
         p.condition,
-        p.images->0 as "imageUrl",
-        p.rating,
-        p.review_count as "reviews",
-        p.created_at as "postedDate",
         p.location,
-        c.name as category,
-        p.contact_name as seller,
-        CASE 
-          WHEN p.featured = true THEN 'Featured'
-          WHEN p.created_at > NOW() - INTERVAL '7 days' THEN 'New Listing'
-          WHEN p.original_price IS NOT NULL THEN 'Sale'
-          ELSE NULL
-        END as badge
+        c.name as category
       FROM products p
       JOIN categories c ON p.category_id = c.id
       WHERE p.status = 'approved'
     `
-
-    const params: any[] = []
+    const params = []
     let paramIndex = 1
 
-    if (category && category !== "all") {
-      query += ` AND c.slug = $${paramIndex}`
-      params.push(category)
-      paramIndex++
+    if (category) {
+      query += ` AND c.name ILIKE $${paramIndex++}`
+      params.push(`%${category}%`)
     }
-
-    if (condition && condition !== "all") {
-      query += ` AND LOWER(p.condition) = LOWER($${paramIndex})`
-      params.push(condition)
-      paramIndex++
-    }
-
     if (minPrice) {
-      query += ` AND p.price >= $${paramIndex}`
-      params.push(Number.parseInt(minPrice) * 100) // Convert to paise
-      paramIndex++
+      query += ` AND p.price >= $${paramIndex++} * 100`
+      params.push(Number.parseFloat(minPrice))
     }
-
     if (maxPrice) {
-      query += ` AND p.price <= $${paramIndex}`
-      params.push(Number.parseInt(maxPrice) * 100) // Convert to paise
-      paramIndex++
+      query += ` AND p.price <= $${paramIndex++} * 100`
+      params.push(Number.parseFloat(maxPrice))
     }
-
+    if (condition) {
+      query += ` AND p.condition ILIKE $${paramIndex++}`
+      params.push(`%${condition}%`)
+    }
     if (search) {
-      query += ` AND (
-        p.name ILIKE $${paramIndex} OR 
-        p.description ILIKE $${paramIndex} OR
-        c.name ILIKE $${paramIndex} OR
-        p.contact_name ILIKE $${paramIndex}
-      )`
+      query += ` AND (p.name ILIKE $${paramIndex} OR p.description ILIKE $${paramIndex} OR p.brand ILIKE $${paramIndex})`
       params.push(`%${search}%`)
       paramIndex++
     }
 
-    query += ` ORDER BY p.created_at DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`
+    let orderBy = "p.created_at DESC"
+    if (sortBy === "price_asc") {
+      orderBy = "p.price ASC"
+    } else if (sortBy === "price_desc") {
+      orderBy = "p.price DESC"
+    } else if (sortBy === "name_asc") {
+      orderBy = "p.name ASC"
+    } else if (sortBy === "name_desc") {
+      orderBy = "p.name DESC"
+    }
+
+    query += ` ORDER BY ${orderBy} LIMIT $${paramIndex++} OFFSET $${paramIndex++}`
     params.push(limit, offset)
 
     const result = await db.query(query, params)
 
     const products = result.rows.map((row) => ({
       ...row,
-      postedDate: new Date(row.postedDate).toLocaleDateString("en-IN", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      }),
-      imageUrl: row.imageUrl || "/placeholder.svg?height=300&width=300&text=No+Image",
+      images: typeof row.images === "string" ? JSON.parse(row.images) : row.images,
     }))
 
-    return NextResponse.json(products)
+    // Get total count for pagination
+    let countQuery = `
+      SELECT COUNT(*)
+      FROM products p
+      JOIN categories c ON p.category_id = c.id
+      WHERE p.status = 'approved'
+    `
+    const countParams = []
+    let countParamIndex = 1
+
+    if (category) {
+      countQuery += ` AND c.name ILIKE $${countParamIndex++}`
+      countParams.push(`%${category}%`)
+    }
+    if (minPrice) {
+      countQuery += ` AND p.price >= $${countParamIndex++} * 100`
+      countParams.push(Number.parseFloat(minPrice))
+    }
+    if (maxPrice) {
+      countQuery += ` AND p.price <= $${countParamIndex++} * 100`
+      countParams.push(Number.parseFloat(maxPrice))
+    }
+    if (condition) {
+      countQuery += ` AND p.condition ILIKE $${countParamIndex++}`
+      countParams.push(`%${condition}%`)
+    }
+    if (search) {
+      countQuery += ` AND (p.name ILIKE $${countParamIndex} OR p.description ILIKE $${countParamIndex} OR p.brand ILIKE $${countParamIndex})`
+      countParams.push(`%${search}%`)
+    }
+
+    const countResult = await db.query(countQuery, countParams)
+    const totalProducts = Number.parseInt(countResult.rows[0].count)
+
+    return NextResponse.json({
+      products,
+      totalProducts,
+      currentPage: page,
+      totalPages: Math.ceil(totalProducts / limit),
+    })
   } catch (error) {
     console.error("Error fetching products:", error)
-
-    // Fallback data for development
-    const fallbackProducts = [
-      {
-        id: "1",
-        name: "Yamaha FG830 Acoustic Guitar",
-        price: 25000,
-        originalPrice: 30000,
-        imageUrl: "/placeholder.svg?height=300&width=300&text=Yamaha+Guitar",
-        rating: 4.8,
-        reviews: 124,
-        category: "Guitars",
-        condition: "Excellent",
-        seller: "MusicStore Delhi",
-        location: "New Delhi, India",
-        postedDate: "2 days ago",
-        badge: "Hot Deal",
-        description: "Beautiful acoustic guitar in excellent condition",
-      },
-      {
-        id: "2",
-        name: "Roland TD-17KVX Electronic Drums",
-        price: 85000,
-        originalPrice: 95000,
-        imageUrl: "/placeholder.svg?height=300&width=300&text=Roland+Drums",
-        rating: 4.9,
-        reviews: 67,
-        category: "Drums",
-        condition: "Like New",
-        seller: "DrumWorld Mumbai",
-        location: "Mumbai, India",
-        postedDate: "1 day ago",
-        badge: "New Listing",
-        description: "Professional electronic drum kit with mesh heads",
-      },
-    ]
-
-    return NextResponse.json(fallbackProducts)
+    return NextResponse.json({ error: "Failed to fetch products" }, { status: 500 })
   }
 }

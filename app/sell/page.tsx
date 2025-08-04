@@ -2,779 +2,572 @@
 
 import type React from "react"
 
-import { useState, useRef } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Badge } from "@/components/ui/badge"
-import { Play, Upload, DollarSign, Camera, MapPin, Package, Loader2, Plus, Minus, X } from "lucide-react"
-import { motion } from "framer-motion"
-import Link from "next/link"
-import { toast } from "sonner"
+import { useToast } from "@/components/ui/use-toast"
+import { Loader2Icon } from "lucide-react"
 
-interface Specification {
-  key: string
-  value: string
+interface Category {
+  id: string
+  name: string
 }
 
 export default function SellPage() {
-  const [isLoading, setIsLoading] = useState(false)
-  const [category, setCategory] = useState("")
-  const [condition, setCondition] = useState("")
-  const [images, setImages] = useState<string[]>([])
-  const [specifications, setSpecifications] = useState<Specification[]>([{ key: "", value: "" }])
-  const [features, setFeatures] = useState<string[]>([""])
-  const [shippingMethod, setShippingMethod] = useState("")
-  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
-  const formRef = useRef<HTMLFormElement>(null)
+  const { toast } = useToast()
+  const [loading, setLoading] = useState(false)
+  const [categories, setCategories] = useState<Category[]>([])
+
+  const [formData, setFormData] = useState({
+    name: "",
+    brand: "",
+    price: "",
+    originalPrice: "",
+    condition: "",
+    description: "",
+    specifications: [{ key: "", value: "" }],
+    features: [""],
+    images: [""], // Placeholder for image URLs
+    shippingInfo: { method: "", cost: "", estimatedDelivery: "" },
+    warranty: "",
+    returnPolicy: "",
+    contactName: "",
+    contactMethod: "",
+    contactDetails: "",
+    inStock: true,
+    location: "",
+    categoryId: "",
+    sellerId: "seller_123", // Placeholder for actual seller ID from auth
+  })
+
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const res = await fetch("/api/categories")
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`)
+        }
+        const data = await res.json()
+        setCategories(data)
+      } catch (e: any) {
+        toast({
+          title: "Error fetching categories",
+          description: e.message,
+          variant: "destructive",
+        })
+      }
+    }
+    fetchCategories()
+  }, [toast])
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { id, value, type, checked } = e.target as HTMLInputElement
+    setFormData((prev) => ({
+      ...prev,
+      [id]: type === "checkbox" ? checked : value,
+    }))
+  }
+
+  const handleSelectChange = (id: string, value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      [id]: value,
+    }))
+  }
+
+  const handleSpecificationChange = (index: number, field: "key" | "value", value: string) => {
+    const newSpecs = [...formData.specifications]
+    newSpecs[index] = { ...newSpecs[index], [field]: value }
+    setFormData((prev) => ({ ...prev, specifications: newSpecs }))
+  }
+
+  const addSpecification = () => {
+    setFormData((prev) => ({
+      ...prev,
+      specifications: [...prev.specifications, { key: "", value: "" }],
+    }))
+  }
+
+  const removeSpecification = (index: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      specifications: prev.specifications.filter((_, i) => i !== index),
+    }))
+  }
+
+  const handleFeatureChange = (index: number, value: string) => {
+    const newFeatures = [...formData.features]
+    newFeatures[index] = value
+    setFormData((prev) => ({ ...prev, features: newFeatures }))
+  }
+
+  const addFeature = () => {
+    setFormData((prev) => ({ ...prev, features: [...prev.features, ""] }))
+  }
+
+  const removeFeature = (index: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      features: prev.features.filter((_, i) => i !== index),
+    }))
+  }
+
+  const handleImageChange = (index: number, value: string) => {
+    const newImages = [...formData.images]
+    newImages[index] = value
+    setFormData((prev) => ({ ...prev, images: newImages }))
+  }
+
+  const addImage = () => {
+    setFormData((prev) => ({ ...prev, images: [...prev.images, ""] }))
+  }
+
+  const removeImage = (index: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      images: prev.images.filter((_, i) => i !== index),
+    }))
+  }
+
+  const handleShippingInfoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { id, value } = e.target
+    setFormData((prev) => ({
+      ...prev,
+      shippingInfo: { ...prev.shippingInfo, [id]: value },
+    }))
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setIsLoading(true)
-
-    const formData = new FormData(e.target as HTMLFormElement)
-
-    // Collect all form data
-    const productData = {
-      title: formData.get("title") as string,
-      brand: formData.get("brand") as string,
-      category: category,
-      condition: condition,
-      description: formData.get("description") as string,
-      price: Number.parseInt(formData.get("price") as string),
-      originalPrice: formData.get("original-price") ? Number.parseInt(formData.get("original-price") as string) : null,
-      location: formData.get("location") as string,
-      negotiable: formData.get("negotiable") === "on",
-      shipping: {
-        method: shippingMethod,
-        freeShipping: formData.get("free-shipping") === "on",
-        cost: formData.get("shipping-cost") ? Number.parseInt(formData.get("shipping-cost") as string) : 0,
-        estimatedDays: formData.get("estimated-days") as string,
-        localPickup: formData.get("local-pickup") === "on",
-        nationwide: formData.get("nationwide-shipping") === "on",
-      },
-      specifications: specifications.filter((spec) => spec.key && spec.value),
-      features: features.filter((feature) => feature.trim()),
-      images: images,
-      warranty: formData.get("warranty") as string,
-      returnPolicy: formData.get("return-policy") as string,
-      contactName: formData.get("contact-name") as string,
-      contactMethod: formData.get("contact-method") as string,
-      contactDetails: formData.get("contact-details") as string,
-      inStock: Number.parseInt(formData.get("stock-quantity") as string) || 1,
-    }
+    setLoading(true)
 
     try {
-      const response = await fetch("/api/products/submit", {
+      const payload = {
+        ...formData,
+        // Filter out empty specifications, features, and images
+        specifications: formData.specifications.filter((s) => s.key && s.value),
+        features: formData.features.filter((f) => f),
+        images: formData.images.filter((img) => img),
+        // Convert shipping cost to number if it's not empty
+        shippingInfo: {
+          ...formData.shippingInfo,
+          cost: formData.shippingInfo.cost ? Number.parseFloat(formData.shippingInfo.cost) : 0,
+        },
+      }
+
+      const res = await fetch("/api/products/submit", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(productData),
+        body: JSON.stringify(payload),
       })
 
-      if (response.ok) {
-        const result = await response.json()
-        toast.success("Product submitted successfully!", {
-          description: `Your listing "${productData.title}" has been submitted for admin review. You'll be notified once it's approved.`,
-        })
-
-        // Reset form
-        formRef.current?.reset()
-        setCategory("")
-        setCondition("")
-        setImages([])
-        setSpecifications([{ key: "", value: "" }])
-        setFeatures([""])
-        setShippingMethod("")
-
-        // Scroll to top
-        window.scrollTo({ top: 0, behavior: "smooth" })
-      } else {
-        throw new Error("Failed to submit product")
+      if (!res.ok) {
+        const errorData = await res.json()
+        throw new Error(errorData.error || `HTTP error! status: ${res.status}`)
       }
-    } catch (error) {
-      toast.error("Failed to submit product", {
-        description: "Please check all fields and try again.",
+
+      const data = await res.json()
+      toast({
+        title: "Product Submitted!",
+        description: data.message,
+      })
+      // Optionally reset form
+      setFormData({
+        name: "",
+        brand: "",
+        price: "",
+        originalPrice: "",
+        condition: "",
+        description: "",
+        specifications: [{ key: "", value: "" }],
+        features: [""],
+        images: [""],
+        shippingInfo: { method: "", cost: "", estimatedDelivery: "" },
+        warranty: "",
+        returnPolicy: "",
+        contactName: "",
+        contactMethod: "",
+        contactDetails: "",
+        inStock: true,
+        location: "",
+        categoryId: "",
+        sellerId: "seller_123",
+      })
+    } catch (e: any) {
+      toast({
+        title: "Submission Failed",
+        description: e.message,
+        variant: "destructive",
       })
     } finally {
-      setIsLoading(false)
+      setLoading(false)
     }
-  }
-
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const newImages = Array.from(e.target.files).map((file) => URL.createObjectURL(file))
-      setImages((prev) => [...prev, ...newImages].slice(0, 8)) // Max 8 images
-    }
-  }
-
-  const removeImage = (index: number) => {
-    setImages((prev) => prev.filter((_, i) => i !== index))
-  }
-
-  const addSpecification = () => {
-    setSpecifications((prev) => [...prev, { key: "", value: "" }])
-  }
-
-  const updateSpecification = (index: number, field: "key" | "value", value: string) => {
-    setSpecifications((prev) => prev.map((spec, i) => (i === index ? { ...spec, [field]: value } : spec)))
-  }
-
-  const removeSpecification = (index: number) => {
-    setSpecifications((prev) => prev.filter((_, i) => i !== index))
-  }
-
-  const addFeature = () => {
-    setFeatures((prev) => [...prev, ""])
-  }
-
-  const updateFeature = (index: number, value: string) => {
-    setFeatures((prev) => prev.map((feature, i) => (i === index ? value : feature)))
-  }
-
-  const removeFeature = (index: number) => {
-    setFeatures((prev) => prev.filter((_, i) => i !== index))
   }
 
   return (
-    <div className="min-h-screen bg-black text-white">
-      {/* Header */}
-      <motion.header
-        className="sticky top-0 z-50 w-full border-b border-white/10 bg-black/80 backdrop-blur-xl"
-        initial={{ y: -100 }}
-        animate={{ y: 0 }}
-        transition={{ duration: 0.6, ease: "easeOut" }}
-      >
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <Link href="/" className="flex items-center space-x-3 group">
-              <motion.div
-                className="h-10 w-10 bg-gradient-to-br from-white to-gray-300 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300"
-                whileHover={{ rotate: 5 }}
-              >
-                <Play className="h-6 w-6 text-black ml-0.5" />
-              </motion.div>
-              <motion.span
-                className="text-3xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent"
-                whileHover={{ scale: 1.05 }}
-              >
-                Legato
-              </motion.span>
-            </Link>
-            <div className="flex items-center space-x-4">
-              <Link href="/marketplace">
-                <Button variant="outline" className="border-white/30 text-white hover:bg-white/10 bg-transparent">
-                  Browse Marketplace
-                </Button>
-              </Link>
-              <Link href="/auth">
-                <Button variant="outline" className="border-white/30 text-white hover:bg-white/10 bg-transparent">
-                  Sign In
-                </Button>
-              </Link>
+    <div className="container mx-auto px-4 py-8 md:px-6 lg:px-8">
+      <h1 className="mb-8 text-4xl font-bold">Sell Your Product</h1>
+      <form onSubmit={handleSubmit} className="space-y-8">
+        <Card>
+          <CardHeader>
+            <CardTitle>Product Details</CardTitle>
+            <CardDescription>Provide basic information about your product.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="name">Product Name</Label>
+              <Input
+                id="name"
+                placeholder="e.g., Wireless Bluetooth Headphones"
+                value={formData.name}
+                onChange={handleChange}
+                required
+              />
             </div>
-          </div>
-        </div>
-      </motion.header>
+            <div className="space-y-2">
+              <Label htmlFor="brand">Brand</Label>
+              <Input
+                id="brand"
+                placeholder="e.g., Sony, Apple, Generic"
+                value={formData.brand}
+                onChange={handleChange}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="price">Price ($)</Label>
+              <Input
+                id="price"
+                type="number"
+                step="0.01"
+                placeholder="99.99"
+                value={formData.price}
+                onChange={handleChange}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="originalPrice">Original Price ($) (Optional)</Label>
+              <Input
+                id="originalPrice"
+                type="number"
+                step="0.01"
+                placeholder="129.99"
+                value={formData.originalPrice}
+                onChange={handleChange}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="condition">Condition</Label>
+              <Select value={formData.condition} onValueChange={(value) => handleSelectChange("condition", value)}>
+                <SelectTrigger id="condition">
+                  <SelectValue placeholder="Select condition" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="new">New</SelectItem>
+                  <SelectItem value="used">Used</SelectItem>
+                  <SelectItem value="refurbished">Refurbished</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="categoryId">Category</Label>
+              <Select value={formData.categoryId} onValueChange={(value) => handleSelectChange("categoryId", value)}>
+                <SelectTrigger id="categoryId">
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map((category) => (
+                    <SelectItem key={category.id} value={category.id}>
+                      {category.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="description">Description</Label>
+              <Textarea
+                id="description"
+                placeholder="Provide a detailed description of your product..."
+                value={formData.description}
+                onChange={handleChange}
+                rows={5}
+                required
+              />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="location">Location (City, State/Country)</Label>
+              <Input
+                id="location"
+                placeholder="e.g., New York, NY, USA"
+                value={formData.location}
+                onChange={handleChange}
+                required
+              />
+            </div>
+            <div className="flex items-center space-x-2 md:col-span-2">
+              <Checkbox
+                id="inStock"
+                checked={formData.inStock}
+                onCheckedChange={(checked) => setFormData((prev) => ({ ...prev, inStock: Boolean(checked) }))}
+              />
+              <Label htmlFor="inStock">In Stock</Label>
+            </div>
+          </CardContent>
+        </Card>
 
-      <div className="container mx-auto px-4 py-8">
-        <div className="max-w-4xl mx-auto">
-          {/* Header */}
-          <motion.div
-            className="text-center mb-8"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-          >
-            <h1 className="text-4xl font-bold text-white mb-4">Sell Your Instruments</h1>
-            <p className="text-xl text-white/70 max-w-2xl mx-auto">
-              Create a detailed listing for your instrument. All submissions are reviewed by our team before going live.
-            </p>
-          </motion.div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Images</CardTitle>
+            <CardDescription>Add URLs for your product images (at least one).</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {formData.images.map((image, index) => (
+              <div key={index} className="flex items-center gap-2">
+                <Input
+                  placeholder="Image URL"
+                  value={image}
+                  onChange={(e) => handleImageChange(index, e.target.value)}
+                  required={index === 0} // Make first image required
+                />
+                {formData.images.length > 1 && (
+                  <Button type="button" variant="outline" size="icon" onClick={() => removeImage(index)}>
+                    <MinusIcon className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            ))}
+            <Button type="button" variant="outline" onClick={addImage}>
+              <PlusIcon className="mr-2 h-4 w-4" /> Add Another Image
+            </Button>
+          </CardContent>
+        </Card>
 
-          {/* Benefits */}
-          <motion.div
-            className="grid md:grid-cols-3 gap-6 mb-8"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.2 }}
-          >
-            <Card className="bg-white/5 border-white/10 backdrop-blur-sm">
-              <CardContent className="p-6">
-                <DollarSign className="h-12 w-12 text-white mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-white mb-2 text-center">Best Prices</h3>
-                <p className="text-white/70 text-center">
-                  Get top value for your gear with our competitive marketplace
-                </p>
-              </CardContent>
-            </Card>
-            <Card className="bg-white/5 border-white/10 backdrop-blur-sm">
-              <CardContent className="p-6">
-                <Package className="h-12 w-12 text-white mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-white mb-2 text-center">Quality Control</h3>
-                <p className="text-white/70 text-center">All listings are reviewed by our team for quality assurance</p>
-              </CardContent>
-            </Card>
-            <Card className="bg-white/5 border-white/10 backdrop-blur-sm">
-              <CardContent className="p-6">
-                <MapPin className="h-12 w-12 text-white mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-white mb-2 text-center">Trusted Platform</h3>
-                <p className="text-white/70 text-center">Secure transactions with buyer and seller protection</p>
-              </CardContent>
-            </Card>
-          </motion.div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Specifications</CardTitle>
+            <CardDescription>Add key-value pairs for product specifications.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {formData.specifications.map((spec, index) => (
+              <div key={index} className="flex items-center gap-2">
+                <Input
+                  placeholder="Key (e.g., Color)"
+                  value={spec.key}
+                  onChange={(e) => handleSpecificationChange(index, "key", e.target.value)}
+                />
+                <Input
+                  placeholder="Value (e.g., Black)"
+                  value={spec.value}
+                  onChange={(e) => handleSpecificationChange(index, "value", e.target.value)}
+                />
+                {formData.specifications.length > 1 && (
+                  <Button type="button" variant="outline" size="icon" onClick={() => removeSpecification(index)}>
+                    <MinusIcon className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            ))}
+            <Button type="button" variant="outline" onClick={addSpecification}>
+              <PlusIcon className="mr-2 h-4 w-4" /> Add Specification
+            </Button>
+          </CardContent>
+        </Card>
 
-          {/* Listing Form */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.4 }}
-          >
-            <Card className="bg-white/5 border-white/10 backdrop-blur-sm">
-              <CardHeader>
-                <CardTitle className="text-white text-2xl">Create Your Listing</CardTitle>
-                <CardDescription className="text-white/70">
-                  Provide detailed information about your instrument. Complete listings get approved faster.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form ref={formRef} onSubmit={handleSubmit} className="space-y-8">
-                  {/* Basic Information */}
-                  <div className="space-y-6">
-                    <h3 className="text-xl font-semibold text-white border-b border-white/10 pb-2">
-                      Basic Information
-                    </h3>
+        <Card>
+          <CardHeader>
+            <CardTitle>Features</CardTitle>
+            <CardDescription>List key features of your product.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {formData.features.map((feature, index) => (
+              <div key={index} className="flex items-center gap-2">
+                <Input
+                  placeholder="Feature description"
+                  value={feature}
+                  onChange={(e) => handleFeatureChange(index, e.target.value)}
+                />
+                {formData.features.length > 1 && (
+                  <Button type="button" variant="outline" size="icon" onClick={() => removeFeature(index)}>
+                    <MinusIcon className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            ))}
+            <Button type="button" variant="outline" onClick={addFeature}>
+              <PlusIcon className="mr-2 h-4 w-4" /> Add Feature
+            </Button>
+          </CardContent>
+        </Card>
 
-                    <div className="grid md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="title" className="text-white/80">
-                          Product Title *
-                        </Label>
-                        <Input
-                          id="title"
-                          name="title"
-                          placeholder="e.g., Fender Player Stratocaster Electric Guitar"
-                          className="bg-white/5 border-white/20 text-white placeholder:text-white/40"
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="brand" className="text-white/80">
-                          Brand *
-                        </Label>
-                        <Input
-                          id="brand"
-                          name="brand"
-                          placeholder="e.g., Fender, Gibson, Yamaha"
-                          className="bg-white/5 border-white/20 text-white placeholder:text-white/40"
-                          required
-                        />
-                      </div>
-                    </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Shipping Information</CardTitle>
+            <CardDescription>Details about shipping for this product.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="shippingMethod">Method</Label>
+              <Input
+                id="method"
+                placeholder="e.g., Standard, Express"
+                value={formData.shippingInfo.method}
+                onChange={handleShippingInfoChange}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="shippingCost">Cost ($)</Label>
+              <Input
+                id="cost"
+                type="number"
+                step="0.01"
+                placeholder="5.00"
+                value={formData.shippingInfo.cost}
+                onChange={handleShippingInfoChange}
+              />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="estimatedDelivery">Estimated Delivery</Label>
+              <Input
+                id="estimatedDelivery"
+                placeholder="e.g., 3-5 business days"
+                value={formData.shippingInfo.estimatedDelivery}
+                onChange={handleShippingInfoChange}
+              />
+            </div>
+          </CardContent>
+        </Card>
 
-                    <div className="grid md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="category" className="text-white/80">
-                          Category *
-                        </Label>
-                        <Select value={category} name="category" onValueChange={setCategory} required>
-                          <SelectTrigger className="bg-white/5 border-white/20 text-white">
-                            <SelectValue placeholder="Select category" />
-                          </SelectTrigger>
-                          <SelectContent className="bg-black/90 border-white/20">
-                            <SelectItem value="guitars">Guitars</SelectItem>
-                            <SelectItem value="bass">Bass Guitars</SelectItem>
-                            <SelectItem value="keyboards">Keyboards & Pianos</SelectItem>
-                            <SelectItem value="drums">Drums & Percussion</SelectItem>
-                            <SelectItem value="traditional">Traditional Instruments</SelectItem>
-                            <SelectItem value="audio">Audio Equipment</SelectItem>
-                            <SelectItem value="brass">Brass Instruments</SelectItem>
-                            <SelectItem value="strings">String Instruments</SelectItem>
-                            <SelectItem value="accessories">Accessories</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="condition" className="text-white/80">
-                          Condition *
-                        </Label>
-                        <Select value={condition} name="condition" onValueChange={setCondition} required>
-                          <SelectTrigger className="bg-white/5 border-white/20 text-white">
-                            <SelectValue placeholder="Select condition" />
-                          </SelectTrigger>
-                          <SelectContent className="bg-black/90 border-white/20">
-                            <SelectItem value="new">New</SelectItem>
-                            <SelectItem value="like-new">Like New</SelectItem>
-                            <SelectItem value="excellent">Excellent</SelectItem>
-                            <SelectItem value="very-good">Very Good</SelectItem>
-                            <SelectItem value="good">Good</SelectItem>
-                            <SelectItem value="fair">Fair</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Warranty & Returns</CardTitle>
+            <CardDescription>Information about product warranty and return policy.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="warranty">Warranty</Label>
+              <Textarea
+                id="warranty"
+                placeholder="e.g., 1-year manufacturer warranty"
+                value={formData.warranty}
+                onChange={handleChange}
+                rows={3}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="returnPolicy">Return Policy</Label>
+              <Textarea
+                id="returnPolicy"
+                placeholder="e.g., 30-day free returns"
+                value={formData.returnPolicy}
+                onChange={handleChange}
+                rows={3}
+              />
+            </div>
+          </CardContent>
+        </Card>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="description" className="text-white/80">
-                        Detailed Description *
-                      </Label>
-                      <Textarea
-                        id="description"
-                        name="description"
-                        placeholder="Provide a detailed description of your instrument. Include its history, any modifications, wear and tear, included accessories, etc. The more details, the better!"
-                        className="bg-white/5 border-white/20 text-white placeholder:text-white/40 min-h-32"
-                        required
-                      />
-                    </div>
-                  </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Contact Information</CardTitle>
+            <CardDescription>How buyers can contact you.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="contactName">Contact Name</Label>
+              <Input
+                id="contactName"
+                placeholder="Your Name"
+                value={formData.contactName}
+                onChange={handleChange}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="contactMethod">Preferred Contact Method</Label>
+              <Select
+                value={formData.contactMethod}
+                onValueChange={(value) => handleSelectChange("contactMethod", value)}
+              >
+                <SelectTrigger id="contactMethod">
+                  <SelectValue placeholder="Select method" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="email">Email</SelectItem>
+                  <SelectItem value="phone">Phone</SelectItem>
+                  <SelectItem value="chat">Chat</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="contactDetails">Contact Details</Label>
+              <Input
+                id="contactDetails"
+                placeholder="e.g., your@email.com or +1234567890"
+                value={formData.contactDetails}
+                onChange={handleChange}
+                required
+              />
+            </div>
+          </CardContent>
+        </Card>
 
-                  {/* Images */}
-                  <div className="space-y-6">
-                    <h3 className="text-xl font-semibold text-white border-b border-white/10 pb-2">Photos *</h3>
-
-                    <div className="space-y-4">
-                      <div className="border-2 border-dashed border-white/20 rounded-lg p-8 text-center">
-                        <Camera className="h-12 w-12 text-white/60 mx-auto mb-4" />
-                        <p className="text-white/80 mb-2">Upload high-quality photos of your instrument</p>
-                        <p className="text-sm text-white/50 mb-4">
-                          Add up to 8 photos. Include front, back, sides, and detail shots. First photo will be the main
-                          image.
-                        </p>
-                        <input
-                          type="file"
-                          multiple
-                          accept="image/*"
-                          onChange={handleImageUpload}
-                          className="hidden"
-                          id="image-upload"
-                        />
-                        <Label htmlFor="image-upload">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="border-white/30 text-white hover:bg-white/10 bg-transparent"
-                          >
-                            <Upload className="h-4 w-4 mr-2" />
-                            Choose Photos
-                          </Button>
-                        </Label>
-                      </div>
-
-                      {images.length > 0 && (
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                          {images.map((image, index) => (
-                            <div key={index} className="relative group">
-                              <img
-                                src={image || "/placeholder.svg"}
-                                alt={`Upload ${index + 1}`}
-                                className="w-full h-24 object-cover rounded-lg border border-white/20"
-                              />
-                              {index === 0 && (
-                                <Badge className="absolute top-1 left-1 bg-white text-black text-xs">Main</Badge>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => removeImage(index)}
-                                className="absolute top-1 right-1 bg-red-500 hover:bg-red-600 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
-                              >
-                                <X className="h-3 w-3" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Specifications */}
-                  <div className="space-y-6">
-                    <h3 className="text-xl font-semibold text-white border-b border-white/10 pb-2">Specifications</h3>
-                    <p className="text-white/60 text-sm">Add technical specifications for your instrument</p>
-
-                    <div className="space-y-4">
-                      {specifications.map((spec, index) => (
-                        <div key={index} className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
-                          <div className="space-y-2">
-                            <Label className="text-white/80">Specification Name</Label>
-                            <Input
-                              placeholder="e.g., Body Type, Scale Length"
-                              value={spec.key}
-                              onChange={(e) => updateSpecification(index, "key", e.target.value)}
-                              className="bg-white/5 border-white/20 text-white placeholder:text-white/40"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label className="text-white/80">Value</Label>
-                            <div className="flex gap-2">
-                              <Input
-                                placeholder="e.g., Dreadnought, 25.5 inches"
-                                value={spec.value}
-                                onChange={(e) => updateSpecification(index, "value", e.target.value)}
-                                className="bg-white/5 border-white/20 text-white placeholder:text-white/40"
-                              />
-                              {specifications.length > 1 && (
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="icon"
-                                  onClick={() => removeSpecification(index)}
-                                  className="border-red-500/30 text-red-400 hover:bg-red-500/10"
-                                >
-                                  <Minus className="h-4 w-4" />
-                                </Button>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={addSpecification}
-                        className="border-white/30 text-white hover:bg-white/10 bg-transparent"
-                      >
-                        <Plus className="h-4 w-4 mr-2" />
-                        Add Specification
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Key Features */}
-                  <div className="space-y-6">
-                    <h3 className="text-xl font-semibold text-white border-b border-white/10 pb-2">Key Features</h3>
-                    <p className="text-white/60 text-sm">Highlight the main features and selling points</p>
-
-                    <div className="space-y-4">
-                      {features.map((feature, index) => (
-                        <div key={index} className="flex gap-2">
-                          <Input
-                            placeholder="e.g., Solid spruce top for superior tone"
-                            value={feature}
-                            onChange={(e) => updateFeature(index, e.target.value)}
-                            className="bg-white/5 border-white/20 text-white placeholder:text-white/40"
-                          />
-                          {features.length > 1 && (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="icon"
-                              onClick={() => removeFeature(index)}
-                              className="border-red-500/30 text-red-400 hover:bg-red-500/10"
-                            >
-                              <Minus className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </div>
-                      ))}
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={addFeature}
-                        className="border-white/30 text-white hover:bg-white/10 bg-transparent"
-                      >
-                        <Plus className="h-4 w-4 mr-2" />
-                        Add Feature
-                      </Button>
-                    </div>
-                  </div>
-
-                  {/* Pricing */}
-                  <div className="space-y-6">
-                    <h3 className="text-xl font-semibold text-white border-b border-white/10 pb-2">
-                      Pricing & Inventory
-                    </h3>
-
-                    <div className="grid md:grid-cols-3 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="price" className="text-white/80">
-                          Selling Price (₹) *
-                        </Label>
-                        <Input
-                          id="price"
-                          name="price"
-                          type="number"
-                          step="100"
-                          placeholder="25000"
-                          className="bg-white/5 border-white/20 text-white placeholder:text-white/40"
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="original-price" className="text-white/80">
-                          Original Price (₹)
-                        </Label>
-                        <Input
-                          id="original-price"
-                          name="original-price"
-                          type="number"
-                          step="100"
-                          placeholder="30000"
-                          className="bg-white/5 border-white/20 text-white placeholder:text-white/40"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="stock-quantity" className="text-white/80">
-                          Quantity Available *
-                        </Label>
-                        <Input
-                          id="stock-quantity"
-                          name="stock-quantity"
-                          type="number"
-                          min="1"
-                          placeholder="1"
-                          defaultValue="1"
-                          className="bg-white/5 border-white/20 text-white placeholder:text-white/40"
-                          required
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex items-center space-x-2">
-                      <Checkbox id="negotiable" name="negotiable" />
-                      <Label htmlFor="negotiable" className="text-white/80">
-                        Price is negotiable
-                      </Label>
-                    </div>
-                  </div>
-
-                  {/* Shipping Information */}
-                  <div className="space-y-6">
-                    <h3 className="text-xl font-semibold text-white border-b border-white/10 pb-2">
-                      Shipping & Delivery
-                    </h3>
-
-                    <div className="grid md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="location" className="text-white/80">
-                          Your Location *
-                        </Label>
-                        <Input
-                          id="location"
-                          name="location"
-                          placeholder="City, State"
-                          className="bg-white/5 border-white/20 text-white placeholder:text-white/40"
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="shipping-method" className="text-white/80">
-                          Shipping Method *
-                        </Label>
-                        <Select
-                          value={shippingMethod}
-                          name="shipping-method"
-                          onValueChange={setShippingMethod}
-                          required
-                        >
-                          <SelectTrigger className="bg-white/5 border-white/20 text-white">
-                            <SelectValue placeholder="Select shipping method" />
-                          </SelectTrigger>
-                          <SelectContent className="bg-black/90 border-white/20">
-                            <SelectItem value="standard">Standard Shipping</SelectItem>
-                            <SelectItem value="express">Express Shipping</SelectItem>
-                            <SelectItem value="pickup-only">Local Pickup Only</SelectItem>
-                            <SelectItem value="both">Both Shipping & Pickup</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
-                    <div className="grid md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="shipping-cost" className="text-white/80">
-                          Shipping Cost (₹)
-                        </Label>
-                        <Input
-                          id="shipping-cost"
-                          name="shipping-cost"
-                          type="number"
-                          placeholder="500"
-                          className="bg-white/5 border-white/20 text-white placeholder:text-white/40"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="estimated-days" className="text-white/80">
-                          Estimated Delivery *
-                        </Label>
-                        <Input
-                          id="estimated-days"
-                          name="estimated-days"
-                          placeholder="3-5 business days"
-                          className="bg-white/5 border-white/20 text-white placeholder:text-white/40"
-                          required
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-4">
-                      <div className="flex items-center space-x-2">
-                        <Checkbox id="free-shipping" name="free-shipping" />
-                        <Label htmlFor="free-shipping" className="text-white/80">
-                          Offer free shipping
-                        </Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Checkbox id="local-pickup" name="local-pickup" />
-                        <Label htmlFor="local-pickup" className="text-white/80">
-                          Local pickup available
-                        </Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <Checkbox id="nationwide-shipping" name="nationwide-shipping" />
-                        <Label htmlFor="nationwide-shipping" className="text-white/80">
-                          Ship nationwide
-                        </Label>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Warranty & Returns */}
-                  <div className="space-y-6">
-                    <h3 className="text-xl font-semibold text-white border-b border-white/10 pb-2">
-                      Warranty & Returns
-                    </h3>
-
-                    <div className="grid md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="warranty" className="text-white/80">
-                          Warranty Information
-                        </Label>
-                        <Input
-                          id="warranty"
-                          name="warranty"
-                          placeholder="e.g., 1 year manufacturer warranty"
-                          className="bg-white/5 border-white/20 text-white placeholder:text-white/40"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="return-policy" className="text-white/80">
-                          Return Policy
-                        </Label>
-                        <Input
-                          id="return-policy"
-                          name="return-policy"
-                          placeholder="e.g., 7-day return policy"
-                          className="bg-white/5 border-white/20 text-white placeholder:text-white/40"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Contact Information */}
-                  <div className="space-y-6">
-                    <h3 className="text-xl font-semibold text-white border-b border-white/10 pb-2">
-                      Contact Information
-                    </h3>
-
-                    <div className="grid md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="contact-name" className="text-white/80">
-                          Your Name *
-                        </Label>
-                        <Input
-                          id="contact-name"
-                          name="contact-name"
-                          placeholder="How buyers should address you"
-                          className="bg-white/5 border-white/20 text-white placeholder:text-white/40"
-                          required
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="contact-method" className="text-white/80">
-                          Preferred Contact Method *
-                        </Label>
-                        <Select name="contact-method" required>
-                          <SelectTrigger className="bg-white/5 border-white/20 text-white">
-                            <SelectValue placeholder="How should buyers contact you?" />
-                          </SelectTrigger>
-                          <SelectContent className="bg-black/90 border-white/20">
-                            <SelectItem value="message">Legato Messages</SelectItem>
-                            <SelectItem value="email">Email</SelectItem>
-                            <SelectItem value="phone">Phone</SelectItem>
-                            <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="contact-details" className="text-white/80">
-                        Contact Details *
-                      </Label>
-                      <Input
-                        id="contact-details"
-                        name="contact-details"
-                        placeholder="Email address, phone number, or WhatsApp number"
-                        className="bg-white/5 border-white/20 text-white placeholder:text-white/40"
-                        required
-                      />
-                    </div>
-                  </div>
-
-                  {/* Terms */}
-                  <div className="space-y-4">
-                    <div className="flex items-center space-x-2">
-                      <Checkbox id="terms" name="terms" required />
-                      <Label htmlFor="terms" className="text-white/80">
-                        I agree to the{" "}
-                        <Link href="#" className="text-white hover:underline">
-                          Terms of Service
-                        </Link>{" "}
-                        and{" "}
-                        <Link href="#" className="text-white hover:underline">
-                          Seller Guidelines
-                        </Link>
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Checkbox id="authentic" name="authentic" required />
-                      <Label htmlFor="authentic" className="text-white/80">
-                        I confirm this item is authentic and accurately described
-                      </Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Checkbox id="review-policy" name="review-policy" required />
-                      <Label htmlFor="review-policy" className="text-white/80">
-                        I understand that my listing will be reviewed by admin before going live
-                      </Label>
-                    </div>
-                  </div>
-
-                  {/* Submit */}
-                  <div className="flex flex-col sm:flex-row gap-4 pt-6">
-                    <Button
-                      type="submit"
-                      className="flex-1 bg-white text-black hover:bg-gray-200 font-semibold py-3"
-                      disabled={isLoading}
-                    >
-                      {isLoading ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Submitting for Review...
-                        </>
-                      ) : (
-                        "Submit for Review"
-                      )}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="flex-1 border-white/30 text-white hover:bg-white/10 bg-transparent"
-                    >
-                      Save as Draft
-                    </Button>
-                  </div>
-                </form>
-              </CardContent>
-            </Card>
-          </motion.div>
-        </div>
-      </div>
+        <Button type="submit" className="w-full md:col-span-2 lg:col-span-3" disabled={loading}>
+          {loading ? (
+            <>
+              <Loader2Icon className="mr-2 h-4 w-4 animate-spin" /> Submitting...
+            </>
+          ) : (
+            "Submit Product for Review"
+          )}
+        </Button>
+      </form>
     </div>
+  )
+}
+
+function MinusIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      {...props}
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M5 12h14" />
+    </svg>
+  )
+}
+
+function PlusIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      {...props}
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </svg>
   )
 }

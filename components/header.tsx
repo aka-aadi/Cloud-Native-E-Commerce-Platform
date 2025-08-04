@@ -1,100 +1,120 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import type React from "react"
+
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { ShoppingCart, Play } from "lucide-react"
-import { motion, AnimatePresence } from "framer-motion"
+import { Input } from "@/components/ui/input"
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu"
+import { Sheet, SheetTrigger, SheetContent } from "@/components/ui/sheet"
+import { Package2Icon, SearchIcon, ShoppingCartIcon, MenuIcon, UserIcon } from "lucide-react"
+import { ModeToggle } from "./mode-toggle"
+import { useState } from "react"
+import { useRouter } from "next/navigation"
 
 export function Header() {
-  const [cartCount, setCartCount] = useState(0)
+  const [searchQuery, setSearchQuery] = useState("")
+  const router = useRouter()
 
-  useEffect(() => {
-    const updateCartCount = () => {
-      const savedCart = localStorage.getItem("legato-cart")
-      if (savedCart) {
-        const cart = JSON.parse(savedCart)
-        setCartCount(cart.length || 0)
-      }
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (searchQuery.trim()) {
+      router.push(`/marketplace?search=${encodeURIComponent(searchQuery.trim())}`)
     }
-
-    // Initial load
-    updateCartCount()
-
-    // Listen for storage changes
-    window.addEventListener("storage", updateCartCount)
-
-    // Listen for custom cart update events
-    window.addEventListener("cartUpdated", updateCartCount)
-
-    return () => {
-      window.removeEventListener("storage", updateCartCount)
-      window.removeEventListener("cartUpdated", updateCartCount)
-    }
-  }, [])
+  }
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-white/10 bg-black/80 backdrop-blur-xl">
-      <div className="container mx-auto px-4 py-4">
-        <div className="flex items-center justify-between">
-          <Link href="/" className="flex items-center space-x-3 group">
-            <motion.div
-              className="h-10 w-10 bg-gradient-to-br from-white to-gray-300 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300"
-              whileHover={{ rotate: 5 }}
-            >
-              <Play className="h-6 w-6 text-black ml-0.5" />
-            </motion.div>
-            <motion.span
-              className="text-3xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent"
-              whileHover={{ scale: 1.05 }}
-            >
-              Legato
-            </motion.span>
-          </Link>
-
-          <div className="hidden md:flex items-center space-x-6">
-            <Link href="/marketplace" className="text-white/80 hover:text-white transition-colors">
+    <header className="sticky top-0 z-50 flex h-16 items-center gap-4 border-b bg-background px-4 md:px-6">
+      <nav className="hidden flex-col gap-6 text-lg font-medium md:flex md:flex-row md:items-center md:gap-5 md:text-sm lg:gap-6">
+        <Link href="/" className="flex items-center gap-2 text-lg font-semibold md:text-base">
+          <Package2Icon className="h-6 w-6" />
+          <span className="sr-only">Cloud-Native E-Commerce</span>
+        </Link>
+        <Link href="/marketplace" className="text-foreground transition-colors hover:text-foreground">
+          Marketplace
+        </Link>
+        <Link href="/sell" className="text-muted-foreground transition-colors hover:text-foreground">
+          Sell
+        </Link>
+        <Link href="/admin" className="text-muted-foreground transition-colors hover:text-foreground">
+          Admin
+        </Link>
+      </nav>
+      <Sheet>
+        <SheetTrigger asChild>
+          <Button variant="outline" size="icon" className="shrink-0 md:hidden bg-transparent">
+            <MenuIcon className="h-5 w-5" />
+            <span className="sr-only">Toggle navigation menu</span>
+          </Button>
+        </SheetTrigger>
+        <SheetContent side="left">
+          <nav className="grid gap-6 text-lg font-medium">
+            <Link href="/" className="flex items-center gap-2 text-lg font-semibold">
+              <Package2Icon className="h-6 w-6" />
+              <span className="sr-only">Cloud-Native E-Commerce</span>
+            </Link>
+            <Link href="/marketplace" className="hover:text-foreground">
               Marketplace
             </Link>
-            <Link href="/sell" className="text-white/80 hover:text-white transition-colors">
+            <Link href="/sell" className="text-muted-foreground hover:text-foreground">
               Sell
             </Link>
-            <Link href="/about" className="text-white/80 hover:text-white transition-colors">
-              About
+            <Link href="/admin" className="text-muted-foreground hover:text-foreground">
+              Admin
             </Link>
-            <Link href="/contact" className="text-white/80 hover:text-white transition-colors">
-              Contact
+            <Link href="/cart" className="text-muted-foreground hover:text-foreground">
+              Cart
             </Link>
+            <Link href="/auth" className="text-muted-foreground hover:text-foreground">
+              Login/Register
+            </Link>
+          </nav>
+        </SheetContent>
+      </Sheet>
+      <div className="flex w-full items-center gap-4 md:ml-auto md:gap-2 lg:gap-4">
+        <form className="ml-auto flex-1 sm:flex-initial" onSubmit={handleSearch}>
+          <div className="relative">
+            <SearchIcon className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="search"
+              placeholder="Search products..."
+              className="pl-8 sm:w-[300px] md:w-[200px] lg:w-[300px]"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
           </div>
-
-          <div className="flex items-center space-x-4">
-            <Link href="/cart">
-              <Button variant="ghost" size="icon" className="relative hover:bg-white/10">
-                <ShoppingCart className="h-5 w-5" />
-                <AnimatePresence>
-                  {cartCount > 0 && (
-                    <motion.div
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      exit={{ scale: 0 }}
-                      className="absolute -top-2 -right-2 h-5 w-5 bg-white text-black rounded-full flex items-center justify-center text-xs font-bold"
-                    >
-                      {cartCount}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </Button>
-            </Link>
-            <Link href="/auth">
-              <Button variant="outline" className="border-white/30 text-white hover:bg-white/10 bg-transparent">
-                Sign In
-              </Button>
-            </Link>
-            <Link href="/auth?register=true" className="hidden sm:block">
-              <Button className="bg-white text-black hover:bg-gray-200">Sign Up</Button>
-            </Link>
-          </div>
-        </div>
+        </form>
+        <Button variant="ghost" size="icon" className="relative">
+          <Link href="/cart">
+            <ShoppingCartIcon className="h-5 w-5" />
+            <span className="sr-only">Cart</span>
+            {/* Example for dynamic cart item count */}
+            <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-xs text-primary-foreground">
+              3
+            </span>
+          </Link>
+        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="secondary" size="icon" className="rounded-full">
+              <UserIcon className="h-5 w-5" />
+              <span className="sr-only">Toggle user menu</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem>My Account</DropdownMenuItem>
+            <DropdownMenuItem>Settings</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem>Logout</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <ModeToggle />
       </div>
     </header>
   )
