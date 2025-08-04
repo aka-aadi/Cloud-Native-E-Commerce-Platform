@@ -248,7 +248,7 @@ Now that your EC2 instance with Jenkins is running, let's configure Jenkins.
 
 #### 4.3.1. Access Jenkins and Initial Setup
 
-1.  Open your web browser and go to `http://54.152.249.232:8080`.
+1.  Open your web browser and go to `http://34.229.99.59:8080`.
 2.  You'll be prompted to unlock Jenkins.
 3.  SSH into your EC2 instance using your `.pem` key:
     \`\`\`bash
@@ -313,7 +313,7 @@ Now that your EC2 instance with Jenkins is running, let's configure Jenkins.
     *   `AWS_REGION = 'us-east-1'`
     *   `AWS_ACCOUNT_ID = '619577151605'`
     *   `ECR_REPOSITORY_NAME = 'legato-ecommerce-app'`
-    *   `EC2_INSTANCE_IP = '54.152.249.232'` (Get this from Terraform output)
+    *   `EC2_INSTANCE_IP = '34.229.99.59'` (Get this from Terraform output)
     *   `SSH_CREDENTIALS_ID = 'your-ssh-key-id'` (The ID you set in Jenkins Credentials)
     *   `AWS_CREDENTIALS_ID = 'your-aws-credentials-id'` (The ID you set in Jenkins Credentials)
     *   `git branch: 'main', url: 'https://github.com/your-org/Cloud-Native-E-Commerce-Platform.git'` (Your actual Git repo URL)
@@ -326,7 +326,7 @@ This step automates Jenkins builds whenever you push changes to your Git reposit
 1.  Go to your GitHub repository on GitHub.com.
 2.  Navigate to `Settings` > `Webhooks`.
 3.  Click "Add webhook".
-4.  **Payload URL:** `http://54.152.249.232:8080/github-webhook/`
+4.  **Payload URL:** `http://34.229.99.59:8080/github-webhook/`
 5.  **Content type:** `application/json`.
 6.  **Which events would you like to trigger this webhook?** Select `Just the push event`.
 7.  Click "Add webhook".
@@ -347,10 +347,10 @@ If your application uses other environment variables (e.g., API keys, authentica
 
 1.  **Review all placeholders:** Double-check that you've replaced all `YOUR_...` values in `Dockerfile`, `terraform/rds.tf`, `terraform/main.tf`, `terraform/app-userdata.sh`, and `Jenkinsfile` with your actual AWS IDs, names, and credentials.
 2.  **Test Terraform:** Ensure `terraform apply` runs successfully and all resources are created.
-3.  **Access Jenkins:** Verify you can access Jenkins at `http://54.152.249.232:8080`.
+3.  **Access Jenkins:** Verify you can access Jenkins at `http://34.229.99.59:8080`.
 4.  **Test Jenkins Credentials:** In Jenkins, go to `Manage Jenkins` > `Manage Credentials`. You can't directly "test" them here, but ensuring they are correctly entered is key.
 5.  **Manual Jenkins Build:** Go to your pipeline job in Jenkins and click "Build Now". Observe the console output for any errors. This will trigger the build, push, and deploy process.
-6.  **Access Your Application:** Once the Jenkins pipeline completes successfully, your Next.js application should be accessible at `http://54.152.249.232`.
+6.  **Access Your Application:** Once the Jenkins pipeline completes successfully, your Next.js application should be accessible at `http://34.229.99.59`.
 
 ## 6. Troubleshooting
 

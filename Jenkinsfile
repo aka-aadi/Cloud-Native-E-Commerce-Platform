@@ -6,7 +6,7 @@ pipeline {
         AWS_ACCOUNT_ID = '619577151605' // IMPORTANT: Your AWS Account ID
         ECR_REPOSITORY_NAME = 'legato-ecommerce-app' // IMPORTANT: Name of your ECR repository
         ECR_REPO_URL = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY_NAME}"
-        EC2_INSTANCE_IP = '54.152.249.232' // IMPORTANT: Public IP of your EC2 instance (from Terraform output)
+        EC2_INSTANCE_IP = '34.229.99.59' // IMPORTANT: Public IP of your EC2 instance (from Terraform output)
         EC2_SSH_USER = 'ec2-user' // Default user for Amazon Linux AMIs
         SSH_CREDENTIALS_ID = 'your-ssh-key-id' // IMPORTANT: Jenkins credential ID for SSH key
         AWS_CREDENTIALS_ID = 'your-aws-credentials-id' // IMPORTANT: Jenkins credential ID for AWS access key/secret key
