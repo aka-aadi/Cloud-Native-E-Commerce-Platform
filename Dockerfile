@@ -10,8 +10,8 @@ RUN npm install -g pnpm
 # Copy package.json and pnpm-lock.yaml to leverage Docker cache
 COPY package.json pnpm-lock.yaml ./
 
-# Install dependencies using pnpm
-RUN pnpm install --prod
+# Install dependencies
+RUN pnpm install --no-frozen-lockfile
 
 # Copy the rest of the application code
 COPY . .
