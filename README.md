@@ -214,11 +214,11 @@ Ensure the `terraform` directory in your project root contains the `main.tf`, `r
     *   `data "aws_security_group" "ec2_sg"`: Update `values = ["legato-ec2-sg"]`.
     *   `data "aws_s3_bucket" "legato_assets"`: Update `bucket = "your-legato-assets-bucket-12345"` to your S3 bucket name.
     *   `data "aws_iam_instance_profile" "legato_ec2_profile"`: Update `name = "legato-ec2-role"`.
-    *   `ami = "ami-0abcdef1234567890"`: **Find a valid Amazon Linux 2 or 2023 AMI ID for your region.** You can find this in the EC2 console when launching an instance.
-    *   `key_name = "your-ssh-key-pair-name"`: **Replace with the name of the EC2 Key Pair you created.**
-    *   `aws_account_id = "YOUR_AWS_ACCOUNT_ID"`: **Replace with your 12-digit AWS Account ID.**
-    *   `aws_region = "ap-south-1"`: **Replace with your AWS Region.**
-    *   `ecr_repo_url = "YOUR_AWS_ACCOUNT_ID.dkr.ecr.ap-south-1.amazonaws.com/legato-ecommerce-app"`: **Replace `YOUR_AWS_ACCOUNT_ID` and `ap-south-1` with your actual values.**
+    *   `ami = "ami-08a6efd148b1f7504"`: **Find a valid Amazon Linux 2 or 2023 AMI ID for your region.** You can find this in the EC2 console when launching an instance.
+    *   `key_name = "my-legato-key"`: **Replace with the name of the EC2 Key Pair you created.**
+    *   `aws_account_id = "619577151605"`: **Replace with your 12-digit AWS Account ID.**
+    *   `aws_region = "us-east-1a"`: **Replace with your AWS Region.**
+    *   `ecr_repo_url = "619577151605.dkr.ecr.us-east-1a.amazonaws.com/legato-ecommerce-app"`: **Replace `YOUR_AWS_ACCOUNT_ID` and `ap-south-1` with your actual values.**
 *   **`terraform/app-userdata.sh`:**
     *   The placeholders here are automatically filled by Terraform from `main.tf`. Just ensure the `AWS_ACCOUNT_ID`, `AWS_REGION`, and `ECR_REPO_URL` variables are correctly passed from `main.tf`.
 
@@ -248,7 +248,7 @@ Now that your EC2 instance with Jenkins is running, let's configure Jenkins.
 
 #### 4.3.1. Access Jenkins and Initial Setup
 
-1.  Open your web browser and go to `http://<Your_EC2_Public_IP>:8080`.
+1.  Open your web browser and go to `http://54.152.249.232:8080`.
 2.  You'll be prompted to unlock Jenkins.
 3.  SSH into your EC2 instance using your `.pem` key:
     \`\`\`bash
@@ -310,10 +310,10 @@ Now that your EC2 instance with Jenkins is running, let's configure Jenkins.
         *   **Branches to build:** `*/main` (or your desired branch).
         *   **Script Path:** `Jenkinsfile` (assuming it's in the root of your repository).
 5.  **Update the `Jenkinsfile` placeholders:**
-    *   `AWS_REGION = 'ap-south-1'`
-    *   `AWS_ACCOUNT_ID = 'YOUR_AWS_ACCOUNT_ID'`
+    *   `AWS_REGION = 'us-east-1'`
+    *   `AWS_ACCOUNT_ID = '619577151605'`
     *   `ECR_REPOSITORY_NAME = 'legato-ecommerce-app'`
-    *   `EC2_INSTANCE_IP = 'YOUR_EC2_PUBLIC_IP'` (Get this from Terraform output)
+    *   `EC2_INSTANCE_IP = '54.152.249.232'` (Get this from Terraform output)
     *   `SSH_CREDENTIALS_ID = 'your-ssh-key-id'` (The ID you set in Jenkins Credentials)
     *   `AWS_CREDENTIALS_ID = 'your-aws-credentials-id'` (The ID you set in Jenkins Credentials)
     *   `git branch: 'main', url: 'https://github.com/your-org/Cloud-Native-E-Commerce-Platform.git'` (Your actual Git repo URL)
@@ -326,7 +326,7 @@ This step automates Jenkins builds whenever you push changes to your Git reposit
 1.  Go to your GitHub repository on GitHub.com.
 2.  Navigate to `Settings` > `Webhooks`.
 3.  Click "Add webhook".
-4.  **Payload URL:** `http://<Your_EC2_Public_IP>:8080/github-webhook/`
+4.  **Payload URL:** `http://54.152.249.232:8080/github-webhook/`
 5.  **Content type:** `application/json`.
 6.  **Which events would you like to trigger this webhook?** Select `Just the push event`.
 7.  Click "Add webhook".
@@ -347,10 +347,10 @@ If your application uses other environment variables (e.g., API keys, authentica
 
 1.  **Review all placeholders:** Double-check that you've replaced all `YOUR_...` values in `Dockerfile`, `terraform/rds.tf`, `terraform/main.tf`, `terraform/app-userdata.sh`, and `Jenkinsfile` with your actual AWS IDs, names, and credentials.
 2.  **Test Terraform:** Ensure `terraform apply` runs successfully and all resources are created.
-3.  **Access Jenkins:** Verify you can access Jenkins at `http://<Your_EC2_Public_IP>:8080`.
+3.  **Access Jenkins:** Verify you can access Jenkins at `http://54.152.249.232:8080`.
 4.  **Test Jenkins Credentials:** In Jenkins, go to `Manage Jenkins` > `Manage Credentials`. You can't directly "test" them here, but ensuring they are correctly entered is key.
 5.  **Manual Jenkins Build:** Go to your pipeline job in Jenkins and click "Build Now". Observe the console output for any errors. This will trigger the build, push, and deploy process.
-6.  **Access Your Application:** Once the Jenkins pipeline completes successfully, your Next.js application should be accessible at `http://<Your_EC2_Public_IP>`.
+6.  **Access Your Application:** Once the Jenkins pipeline completes successfully, your Next.js application should be accessible at `http://54.152.249.232`.
 
 ## 6. Troubleshooting
 

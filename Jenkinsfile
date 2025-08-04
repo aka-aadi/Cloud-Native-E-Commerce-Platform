@@ -2,11 +2,11 @@ pipeline {
     agent any
 
     environment {
-        AWS_REGION = 'ap-south-1' // IMPORTANT: Your AWS region
-        AWS_ACCOUNT_ID = 'YOUR_AWS_ACCOUNT_ID' // IMPORTANT: Your AWS Account ID
+        AWS_REGION = 'us-east-1' // IMPORTANT: Your AWS region
+        AWS_ACCOUNT_ID = '619577151605' // IMPORTANT: Your AWS Account ID
         ECR_REPOSITORY_NAME = 'legato-ecommerce-app' // IMPORTANT: Name of your ECR repository
         ECR_REPO_URL = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY_NAME}"
-        EC2_INSTANCE_IP = 'YOUR_EC2_PUBLIC_IP' // IMPORTANT: Public IP of your EC2 instance (from Terraform output)
+        EC2_INSTANCE_IP = '54.152.249.232' // IMPORTANT: Public IP of your EC2 instance (from Terraform output)
         EC2_SSH_USER = 'ec2-user' // Default user for Amazon Linux AMIs
         SSH_CREDENTIALS_ID = 'your-ssh-key-id' // IMPORTANT: Jenkins credential ID for SSH key
         AWS_CREDENTIALS_ID = 'your-aws-credentials-id' // IMPORTANT: Jenkins credential ID for AWS access key/secret key
@@ -15,7 +15,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/your-org/Cloud-Native-E-Commerce-Platform.git' // IMPORTANT: Replace with your Git repository URL
+                git branch: 'main', url: 'https://github.com/aka-aadi/Cloud-Native-E-Commerce-Platform.git' // IMPORTANT: Replace with your Git repository URL
             }
         }
 
