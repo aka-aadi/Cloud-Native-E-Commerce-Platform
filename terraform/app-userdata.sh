@@ -23,17 +23,17 @@ sudo usermod -a -G docker jenkins
 sudo systemctl restart jenkins
 
 # Passed from Terraform
-RDS_ENDPOINT="${rds_endpoint}"
-DB_USERNAME="${db_username}"
-DB_PASSWORD="${db_password}"
-DB_NAME="${db_name}"
-S3_BUCKET="${s3_bucket}"
-AWS_ACCOUNT_ID="${aws_account_id}"
-AWS_REGION="${aws_region}"
-ECR_REPO_URL="${ecr_repo_url}"
+rds_endpoint="${rds_endpoint}"
+db_username="${db_username}"
+db_password="${db_password}"
+db_name="${db_name}"
+s3_bucket="${s3_bucket}"
+aws_account_id="${aws_account_id}"
+aws_region="${aws_region}"
+ecr_repo_url="${ecr_repo_url}"
 
 # Construct the DATABASE_URL for the application
-DATABASE_URL="postgresql://${DB_USERNAME}:${DB_PASSWORD}@${RDS_ENDPOINT}:5432/${DB_NAME}"
+database_url="postgresql://${db_username}:${db_password}@${rds_endpoint}:5432/${db_name}"
 
 # Set up application directory
 mkdir -p /opt/legato
@@ -42,20 +42,20 @@ cd /opt/legato
 # Create a .env file for the Docker container
 echo "NODE_ENV=production" > .env
 echo "PORT=3000" >> .env
-echo "AWS_REGION=${AWS_REGION}" >> .env
-echo "S3_BUCKET_NAME=${S3_BUCKET}" >> .env
-echo "DATABASE_URL=${DATABASE_URL}" >> .env
+echo "AWS_REGION=${aws_region}" >> .env
+echo "S3_BUCKET_NAME=${s3_bucket}" >> .env
+echo "DATABASE_URL=${database_url}" >> .env
 # Add any other environment variables your Next.js app needs
 
 # Install AWS CLI if not already present for ECR login
 sudo yum install -y aws-cli
 
 # Login to ECR (this will be done by Jenkins later, but good for initial setup/testing)
-aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+aws ecr get-login-password --region ${aws_region} | docker login --username AWS --password-stdin ${aws_account_id}.dkr.ecr.${aws_region}.amazonaws.com
 
 # Initial pull and run of the Docker image (optional, Jenkins will handle subsequent deployments)
 # You might want to remove this if you only want Jenkins to deploy
-# docker pull ${ECR_REPO_URL}:latest || true # Pull if exists, ignore if not
+# docker pull ${ecr_repo_url}:latest || true # Pull if exists, ignore if not
 # docker stop legato-app || true
 # docker rm legato-app || true
 # docker run -d \
@@ -63,4 +63,4 @@ aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS 
 #   -p 80:3000 \
 #   --restart always \
 #   --env-file /opt/legato/.env \
-#   ${ECR_REPO_URL}:latest
+#   ${ecr_repo_url}:latest

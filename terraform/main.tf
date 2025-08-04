@@ -1,11 +1,23 @@
-provider "aws" {
-  region = "ap-south-1" # IMPORTANT: Your AWS Region
+# main.tf - Main configuration and EC2 resources
+terraform {
+  required_version = ">= 1.0"
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.1"
+    }
+  }
 }
 
-# This is a simplified example. You should define your VPC, subnets,
-# and security groups here or reference existing ones.
+provider "aws" {
+  region = var.aws_region
+}
 
-# Example: Referencing an existing VPC
+# Data sources to reference existing VPC and subnets
 data "aws_vpc" "selected_vpc" {
   filter {
     name   = "tag:Name"
@@ -22,13 +34,45 @@ data "aws_subnet" "public_az1" {
   vpc_id = data.aws_vpc.selected_vpc.id
 }
 
-# Example: Referencing existing security group for EC2
-data "aws_security_group" "ec2_sg" {
+data "aws_subnet" "private_az1" {
   filter {
     name   = "tag:Name"
-    values = ["legato-ec2-sg"] # Replace with your EC2 security group name
+    values = ["legato-private-subnet-az1"] # Replace with your private subnet name
   }
   vpc_id = data.aws_vpc.selected_vpc.id
+}
+
+data "aws_subnet" "private_az2" {
+  filter {
+    name   = "tag:Name"
+    values = ["legato-private-subnet-az2"] # Replace with your private subnet name
+  }
+  vpc_id = data.aws_vpc.selected_vpc.id
+}
+
+# Data source to reference existing security groups
+data "aws_security_group" "ec2_sg" {
+  filter {
+    name   = "group-name"
+    values = ["legato-ec2-sg"]
+  }
+  
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.selected_vpc.id]
+  }
+}
+
+data "aws_security_group" "rds_sg" {
+  filter {
+    name   = "group-name"
+    values = ["legato-rds-sg"]
+  }
+  
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.selected_vpc.id]
+  }
 }
 
 # Example: Referencing existing S3 bucket
@@ -39,39 +83,4 @@ data "aws_s3_bucket" "legato_assets" {
 # Data source to reference existing IAM Role for EC2
 data "aws_iam_instance_profile" "legato_ec2_profile" {
   name = "legato-ec2-role" # IMPORTANT: Replace with the name of your EC2 IAM Role
-}
-
-module "rds" {
-  source = "./" # Refers to the current directory where rds.tf is located
-}
-
-resource "aws_instance" "legato_app_server" {
-  ami           = "ami-0abcdef1234567890" # IMPORTANT: Use a valid Amazon Linux 2 or 2023 AMI ID for your region
-  instance_type = "t2.micro" # Free tier eligible: t2.micro or t3.micro
-  key_name      = "your-ssh-key-pair-name" # IMPORTANT: Replace with your EC2 Key Pair name
-  subnet_id     = data.aws_subnet.public_az1.id # Deploy in the public subnet
-  vpc_security_group_ids = [data.aws_security_group.ec2_sg.id]
-  associate_public_ip_address = true # Assign a public IP for direct access and Jenkins SSH
-
-  iam_instance_profile = data.aws_iam_instance_profile.legato_ec2_profile.name
-
-  user_data = templatefile("${path.module}/app-userdata.sh", {
-    rds_endpoint = module.rds.rds_endpoint
-    db_username  = aws_db_instance.legato_db.username
-    db_password  = aws_db_instance.legato_db.password
-    db_name      = aws_db_instance.legato_db.db_name
-    s3_bucket    = data.aws_s3_bucket.legato_assets.bucket
-    aws_account_id = "YOUR_AWS_ACCOUNT_ID" # IMPORTANT: Your AWS Account ID
-    aws_region     = "ap-south-1" # IMPORTANT: Your AWS Region
-    ecr_repo_url   = "YOUR_AWS_ACCOUNT_ID.dkr.ecr.ap-south-1.amazonaws.com/legato-ecommerce-app" # IMPORTANT: Your ECR Repo URL
-  })
-
-  tags = {
-    Name = "legato-app-jenkins-server"
-  }
-}
-
-output "ec2_public_ip" {
-  value       = aws_instance.legato_app_server.public_ip
-  description = "The public IP address of the EC2 instance"
 }
