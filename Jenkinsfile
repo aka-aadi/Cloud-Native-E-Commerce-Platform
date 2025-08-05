@@ -4,6 +4,7 @@ pipeline {
     environment {
         AWS_REGION = 'us-east-1'
         ECR_REPO_NAME = 'cloud-native-e-commerce-platform'
+        AWS_ACCOUNT_ID = '619577151605' // Replace with your AWS Account ID
         ECS_CLUSTER_NAME = 'ecommerce-cluster'
         ECS_SERVICE_NAME = 'ecommerce-service'
         DB_SECRET_NAME = 'ecommerce-db-credentials' // Name of the secret in AWS Secrets Manager
